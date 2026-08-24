@@ -12,9 +12,7 @@ const SETTINGS_KEY = 'dipavaultguard_settings';
 const CLIENT_ID_KEY = 'dipavaultguard_client_id';
 // Determina quale Client ID usare:
 // Se l'utente ne ha salvato uno personalizzato nelle impostazioni usa quello, altrimenti usa il default
-const activeClientId = (settings.googleClientId && settings.googleClientId.trim() !== '') 
-    ? settings.googleClientId 
-    : DEFAULT_GOOGLE_CLIENT_ID;
+const DEFAULT_GOOGLE_CLIENT_ID = '751284166814-p2u156n0btpstlg1anlnlhl8nlia0pi7.apps.googleusercontent.com';
 
 // Inizializza il client con l'ID attivo
 driveClient = new GoogleDriveClient(activeClientId);
@@ -33,10 +31,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) {}
   }
 
-  // Initialize Drive Client if ID exists
-  if (settings.googleClientId) {
-    driveClient = new GoogleDriveClient(settings.googleClientId);
-    // Init must be called after the GIS script is loaded.
+  // Initialize Drive Client (usa quello salvato o il default di codice)
+  const activeClientId = (settings.googleClientId && settings.googleClientId.trim() !== '') 
+    ? settings.googleClientId 
+    : DEFAULT_GOOGLE_CLIENT_ID;
+
+  if (activeClientId) {
+    driveClient = new GoogleDriveClient(activeClientId);
     try {
       driveClient.init();
     } catch (e) {
@@ -381,8 +382,9 @@ function setupEventListeners() {
           UI.resetAutoLockTimer();
         } else if (id === 'settings-google-client-id') {
           settings.googleClientId = el.value.trim();
-          if (settings.googleClientId) {
-            driveClient = new GoogleDriveClient(settings.googleClientId);
+          const currentId = settings.googleClientId || DEFAULT_GOOGLE_CLIENT_ID;
+          if (currentId) {
+            driveClient = new GoogleDriveClient(currentId);
             driveClient.init();
           } else {
             driveClient = null;
