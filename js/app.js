@@ -396,6 +396,66 @@ function setupEventListeners() {
       }
     });
   }
+  // Drive Connect / Restore from Setup Screen
+  const btnSetupDrive = document.getElementById('btn-setup-drive');
+  if (btnSetupDrive) {
+    btnSetupDrive.addEventListener('click', async () => {
+      // Se manca il client ID, prova a prenderlo o avvisa l'utente
+      if (!settings.googleClientId) {
+        const inputId = prompt("Inserisci il tuo Google Client ID per connetterti a Google Drive:");
+        if (!inputId || !inputId.trim()) return;
+        settings.googleClientId = inputId.trim();
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+        driveClient = new GoogleDriveClient(settings.googleClientId);
+        try {
+          driveClient.init();
+        } catch (e) {}
+      }
+
+      if (!driveClient) {
+        UI.showToast("Google Drive Client non inizializzato", "error");
+        return;
+      }
+
+      try {
+        UI.showToast("Connessione a Google Drive in corso...", "info");
+        await driveClient.authenticate();
+        UI.showToast("Connesso a Google Drive", "success");
+        
+        // Cerca il file del vault su Drive
+        const file = await driveClient.findVaultFile();
+        if (file) {
+          currentVaultFileId = file.id;
+          const remoteData = await driveClient.readVaultFile(file.id);
+          
+          const pwd = prompt("Inserisci la password principale del vault salvato su Google Drive:");
+          if (pwd) {
+            UI.showScreen('screen-loading');
+            try {
+              await appVault.unlock(pwd, remoteData);
+              appPassword = pwd;
+              localStorage.setItem(LOCAL_STORAGE_KEY, arrayBufferToBase64(remoteData));
+              
+              UI.showToast("Vault scaricato e sbloccato con successo!", "success");
+              UI.showScreen('screen-dashboard');
+              UI.renderItemList(appVault.getAllItems());
+              UI.renderCategories(appVault.getCategories(), null);
+              UI.resetAutoLockTimer();
+            } catch (err) {
+              console.error(err);
+              UI.showToast("Password errata o file non valido", "error");
+              UI.showScreen('screen-setup');
+            }
+          }
+        } else {
+          UI.showToast("Nessun vault trovato su Google Drive", "warning");
+        }
+      } catch (err) {
+        console.error("Drive setup error:", err);
+        UI.showToast("Errore di connessione a Google Drive", "error");
+      }
+    });
+  }
 }
 
 async function syncFromDrive(forceUnlockPrompt = false) {
