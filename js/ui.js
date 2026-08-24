@@ -431,8 +431,8 @@ export function renderItemList(items) {
           : `<div class="item-avatar">${initial}</div>`
         }
         <div class="item-details">
-          <div class="item-name">${item.name} ${item.favorite ? '<svg class="icon text-warning" style="width:14px;height:14px;"><use href="#icon-star"></use></svg>' : ''}</div>
-          <div class="item-sub">${item.username || ''} ${item.url ? `• ${new URL(item.url).hostname}` : ''}</div>
+            <div class="item-name">${item.name} ${item.favorite ? '<svg class="icon text-warning" style="width:14px;height:14px;"><use href="#icon-star"></use></svg>' : ''}</div>
+            <div class="item-sub">${item.username || ''} ${item.url ? ` • ${(() => { try { return new URL(item.url.startsWith('http') ? item.url : 'https://' + item.url).hostname; } catch(e) { return item.url; } })()}` : ''}</div>
         </div>
         <div class="item-actions">
           <button class="btn-icon btn-sm btn-copy-pwd" title="Copia Password" data-pwd="${item.password || ''}"><svg class="icon"><use href="#icon-copy"></use></svg></button>
