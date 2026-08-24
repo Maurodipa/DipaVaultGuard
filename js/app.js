@@ -10,6 +10,14 @@ let appPassword = null; // Stored in memory to allow save/sync
 const LOCAL_STORAGE_KEY = 'dipavaultguard_vault';
 const SETTINGS_KEY = 'dipavaultguard_settings';
 const CLIENT_ID_KEY = 'dipavaultguard_client_id';
+// Determina quale Client ID usare:
+// Se l'utente ne ha salvato uno personalizzato nelle impostazioni usa quello, altrimenti usa il default
+const activeClientId = (settings.googleClientId && settings.googleClientId.trim() !== '') 
+    ? settings.googleClientId 
+    : DEFAULT_GOOGLE_CLIENT_ID;
+
+// Inizializza il client con l'ID attivo
+driveClient = new GoogleDriveClient(activeClientId);
 
 let settings = {
   autoLockMinutes: 5,
