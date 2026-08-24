@@ -1,4 +1,4 @@
-export class GoogleDriveClient {
+[cite: 6]export class GoogleDriveClient {
   constructor(clientId) {
     this.clientId = clientId;
     this.tokenClient = null;
@@ -9,27 +9,44 @@ export class GoogleDriveClient {
   }
 
   init() {
-    if (!this.clientId) return;
+    if (!this.clientId) return false;
     try {
+      if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
+        return false;
+      }
       this.tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: this.clientId,
         scope: 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
         callback: (tokenResponse) => {
           if (tokenResponse && tokenResponse.access_token) {
             this.accessToken = tokenResponse.access_token;
-            // The callback will be overridden in authenticate()
           }
         },
       });
       this.initialized = true;
+      return true;
     } catch (e) {
-      console.error("Google Identity Services not loaded");
+      console.error("Google Identity Services not loaded yet", e);
+      return false;
     }
   }
 
   async authenticate() {
+    // Inizializzazione lazy: se non era pronto all'avvio, ci riprova ora che l'utente ha cliccato
+    if (!this.tokenClient) {
+      const success = this.init();
+      if (!success) {
+        // Breve attesa di sicurezza se la rete è molto lenta
+        await new Promise(resolve => setTimeout(resolve, 500));
+        this.init();
+      }
+    }
+
     return new Promise((resolve, reject) => {
-      if (!this.tokenClient) reject(new Error("Client non inizializzato"));
+      if (!this.tokenClient) {
+        reject(new Error("Google Identity Services non disponibile. Verifica la connessione a internet."));
+        return;
+      }
       
       this.tokenClient.callback = async (tokenResponse) => {
         if (tokenResponse && tokenResponse.access_token) {
@@ -62,7 +79,7 @@ export class GoogleDriveClient {
         }
       };
       
-      this.tokenClient.requestAccessToken({ prompt: '' }); // Silent refresh
+      this.tokenClient.requestAccessToken({ prompt: '' });
     });
   }
 
