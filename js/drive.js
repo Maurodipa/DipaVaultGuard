@@ -1,4 +1,4 @@
-[cite: 6]export class GoogleDriveClient {
+export class GoogleDriveClient {
   constructor(clientId) {
     this.clientId = clientId;
     this.tokenClient = null;
