@@ -404,24 +404,26 @@ function setupEventListeners() {
     });
   }
   // Drive Connect / Restore from Setup Screen
+// Drive Connect / Restore from Setup Screen
   const btnSetupDrive = document.getElementById('btn-setup-drive');
   if (btnSetupDrive) {
     btnSetupDrive.addEventListener('click', async () => {
-      // Se manca il client ID, prova a prenderlo o avvisa l'utente
-      if (!settings.googleClientId) {
-        const inputId = prompt("Inserisci il tuo Google Client ID per connetterti a Google Drive:");
-        if (!inputId || !inputId.trim()) return;
-        settings.googleClientId = inputId.trim();
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-        driveClient = new GoogleDriveClient(settings.googleClientId);
+      // Usa il client ID salvato o il default inserito nel codice
+      const activeClientId = (settings.googleClientId && settings.googleClientId.trim() !== '') 
+        ? settings.googleClientId 
+        : DEFAULT_GOOGLE_CLIENT_ID;
+
+      if (!activeClientId) {
+        UI.showToast("Google Client ID non configurato", "error");
+        return;
+      }
+
+      // Se il client non è inizializzato, lo crea al volo con l'ID attivo
+      if (!driveClient) {
+        driveClient = new GoogleDriveClient(activeClientId);
         try {
           driveClient.init();
         } catch (e) {}
-      }
-
-      if (!driveClient) {
-        UI.showToast("Google Drive Client non inizializzato", "error");
-        return;
       }
 
       try {
