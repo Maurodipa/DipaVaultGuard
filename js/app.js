@@ -1,5 +1,111 @@
-// (inizio file invariato: import, variabili, DOMContentLoaded, ecc.)
-// ... (mantieni tutto quanto già presente fino a setupEventListeners)
+import { Vault } from './vault.js';
+import { GoogleDriveClient } from './drive.js';
+import * as UI from './ui.js';
+
+let appVault = new Vault();
+let driveClient = null;
+let currentVaultFileId = null;
+let appPassword = null; // Stored in memory to allow save/sync
+
+const LOCAL_STORAGE_KEY = 'dipavaultguard_vault';
+const SETTINGS_KEY = 'dipavaultguard_settings';
+const CLIENT_ID_KEY = 'dipavaultguard_client_id';
+// Determina quale Client ID usare:
+// Se l'utente ne ha salvato uno personalizzato nelle impostazioni usa quello, altrimenti usa il default
+const DEFAULT_GOOGLE_CLIENT_ID = '751284166814-p2u156n0btpstlg1anlnlhl8nlia0pi7.apps.googleusercontent.com';
+
+let settings = {
+  autoLockMinutes: 5,
+  googleClientId: ''
+};
+
+document.addEventListener('DOMContentLoaded', async () => {
+  // Load settings
+  const storedSettings = localStorage.getItem(SETTINGS_KEY);
+  if (storedSettings) {
+    try {
+      settings = { ...settings, ...JSON.parse(storedSettings) };
+    } catch (e) {}
+  }
+
+  // Initialize Drive Client (usa quello salvato o il default di codice)
+  const activeClientId = (settings.googleClientId && settings.googleClientId.trim() !== '') 
+    ? settings.googleClientId 
+    : DEFAULT_GOOGLE_CLIENT_ID;
+
+  if (activeClientId) {
+    driveClient = new GoogleDriveClient(activeClientId);
+    try {
+      driveClient.init();
+    } catch (e) {
+      setTimeout(() => driveClient && driveClient.init(), 1000);
+    }
+  }
+
+  UI.initUI(appVault, driveClient);
+  
+  // Apply settings to UI
+  const autoLockSelect = document.getElementById('settings-autolock');
+  if (autoLockSelect) autoLockSelect.value = settings.autoLockMinutes;
+  const clientIdInput = document.getElementById('settings-google-client-id');
+  if (clientIdInput) clientIdInput.value = settings.googleClientId;
+
+  // Wait a moment for UI to settle
+  setTimeout(checkInitialState, 500);
+
+  setupEventListeners();
+});
+
+async function checkInitialState() {
+  const localVaultData = localStorage.getItem(LOCAL_STORAGE_KEY);
+  
+  if (localVaultData) {
+    document.getElementById('login-vault-info').textContent = "Vault locale trovato";
+    UI.showScreen('screen-login');
+  } else {
+    // No local vault
+    UI.showScreen('screen-setup');
+  }
+}
+
+async function saveAndSync() {
+  if (!appVault.isUnlocked() || !appPassword) return;
+
+  try {
+    const encryptedBlob = await appVault.getEncryptedData(appPassword);
+    
+    // 1. Save to local storage (Base64 encoding since localStorage needs strings)
+    const base64Data = arrayBufferToBase64(encryptedBlob);
+    localStorage.setItem(LOCAL_STORAGE_KEY, base64Data);
+
+    // 2. Sync to Drive if connected
+    if (driveClient && driveClient.isAuthenticated()) {
+      UI.updateSyncStatus('syncing');
+      try {
+        if (!currentVaultFileId) {
+          const file = await driveClient.findVaultFile();
+          if (file) {
+            currentVaultFileId = file.id;
+          }
+        }
+        
+        if (currentVaultFileId) {
+          await driveClient.updateVaultFile(currentVaultFileId, encryptedBlob);
+        } else {
+          const file = await driveClient.createVaultFile(encryptedBlob);
+          currentVaultFileId = file.id;
+        }
+        UI.updateSyncStatus('synced');
+      } catch (e) {
+        console.error("Drive sync error:", e);
+        UI.updateSyncStatus('error');
+      }
+    }
+  } catch (err) {
+    console.error("Error saving vault:", err);
+    UI.showToast("Errore durante il salvataggio", "error");
+  }
+}
 
 function setupEventListeners() {
   // Vault Updated
@@ -250,11 +356,6 @@ function setupEventListeners() {
     });
   }
 
-  // NOTE: Reset vault removed from welcome/setup screen to avoid accidental deletion.
-  // The original code used:
-  // if (confirm("Attenzione: questo eliminerà il vault locale in modo irreversibile! Vuoi procedere?")) { ... }
-  // That behavior is now available only in Settings with triple confirmation.
-
   // Settings sync
   const settingsFormFields = ['settings-autolock', 'settings-google-client-id'];
   settingsFormFields.forEach(id => {
@@ -279,6 +380,38 @@ function setupEventListeners() {
     }
   });
 
+  // Reset vault (Impostazioni) - richiede tripla conferma per evitare click accidentali
+  const btnSettingsReset = document.getElementById('btn-settings-reset-vault');
+  if (btnSettingsReset) {
+    btnSettingsReset.addEventListener('click', () => {
+      // Step 1: conferma iniziale
+      const step1 = confirm("Attenzione: questa operazione eliminerà il vault locale in modo irreversibile. Vuoi procedere?");
+      if (!step1) return;
+
+      // Step 2: digitare DELETE
+      const token = prompt("Per confermare, digita DELETE (tutto maiuscolo):");
+      if (!token || token !== 'DELETE') {
+        UI.showToast("Conferma non valida. Operazione annullata.", "warning");
+        return;
+      }
+
+      // Step 3: conferma finale
+      const step3 = confirm("Ultima conferma: sei sicuro di voler eliminare definitivamente il vault locale?");
+      if (!step3) {
+        UI.showToast("Operazione annullata.", "info");
+        return;
+      }
+
+      // Esegue il reset
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+      appVault = new Vault();
+      appPassword = null;
+      UI.initUI(appVault, driveClient); // re-init
+      UI.showToast("Vault locale eliminato", "success");
+      UI.showScreen('screen-setup');
+    });
+  }
+
   // Add Category
   const btnAddCategory = document.getElementById('btn-add-category');
   if (btnAddCategory) {
@@ -290,40 +423,8 @@ function setupEventListeners() {
       }
     });
   }
-
-  // Reset vault moved to Settings with triple confirmation
-  const btnSettingsReset = document.getElementById('btn-settings-reset-vault');
-  if (btnSettingsReset) {
-    btnSettingsReset.addEventListener('click', () => {
-      // Step 1: initial confirm
-      const step1 = confirm("Attenzione: questa operazione eliminerà il vault locale in modo irreversibile. Vuoi procedere?");
-      if (!step1) return;
-
-      // Step 2: type DELETE
-      const token = prompt("Per confermare, digita DELETE (tutto maiuscolo):");
-      if (!token || token !== 'DELETE') {
-        UI.showToast("Conferma non valida. Operazione annullata.", "warning");
-        return;
-      }
-
-      // Step 3: final confirm
-      const step3 = confirm("Ultima conferma: sei sicuro di voler eliminare definitivamente il vault locale?");
-      if (!step3) {
-        UI.showToast("Operazione annullata.", "info");
-        return;
-      }
-
-      // Perform reset
-      localStorage.removeItem(LOCAL_STORAGE_KEY);
-      appVault = new Vault();
-      appPassword = null;
-      UI.initUI(appVault, driveClient); // re-init 
-      UI.showToast("Vault locale eliminato", "success");
-      UI.showScreen('screen-setup');
-    });
-  }
-
   // Drive Connect / Restore from Setup Screen
+// Drive Connect / Restore from Setup Screen
   const btnSetupDrive = document.getElementById('btn-setup-drive');
   if (btnSetupDrive) {
     btnSetupDrive.addEventListener('click', async () => {
@@ -386,4 +487,92 @@ function setupEventListeners() {
   }
 }
 
-// (resto del file invariato: syncFromDrive, helper functions, ecc.)
+async function syncFromDrive(forceUnlockPrompt = false) {
+  if (!driveClient || !driveClient.isAuthenticated()) return;
+  UI.updateSyncStatus('syncing');
+  try {
+    const file = await driveClient.findVaultFile();
+    if (file) {
+      currentVaultFileId = file.id;
+      const remoteData = await driveClient.readVaultFile(file.id);
+      
+      if (forceUnlockPrompt && !appVault.isUnlocked()) {
+        // Just downloaded, need password to unlock
+        const pwd = prompt("Inserisci la password principale per il vault di Drive:");
+        if (pwd) {
+          try {
+            await appVault.unlock(pwd, remoteData);
+            appPassword = pwd;
+            localStorage.setItem(LOCAL_STORAGE_KEY, arrayBufferToBase64(remoteData));
+            
+            UI.showToast("Vault sincronizzato da Drive e sbloccato", "success");
+            UI.showScreen('screen-dashboard');
+            UI.renderItemList(appVault.getAllItems());
+            UI.renderCategories(appVault.getCategories(), null);
+            UI.resetAutoLockTimer();
+          } catch(e) {
+            UI.showToast("Password errata", "error");
+          }
+        }
+      } else if (appVault.isUnlocked()) {
+        // We are already unlocked. We should try to unlock remote data with same password to merge or overwrite.
+        // For simplicity in this version, we will overwrite local if remote is newer, or overwrite remote if local is newer.
+        // Usually, proper sync requires merging items. Here we just take the newest vault file.
+        // A better implementation would unpack remote and compare timestamps.
+        
+        try {
+          // Verify we can open it
+          const tempVault = new Vault();
+          await tempVault.unlock(appPassword, remoteData);
+          
+          const localStats = appVault.getStats();
+          const remoteStats = tempVault.getStats();
+          
+          const localTime = new Date(localStats.lastUpdated).getTime();
+          const remoteTime = new Date(remoteStats.lastUpdated).getTime();
+          
+          if (remoteTime > localTime) {
+            // Replace local
+            appVault = tempVault;
+            UI.initUI(appVault, driveClient);
+            localStorage.setItem(LOCAL_STORAGE_KEY, arrayBufferToBase64(remoteData));
+            UI.renderItemList(appVault.getAllItems());
+            UI.renderCategories(appVault.getCategories(), null);
+            UI.showToast("Vault aggiornato da Drive", "info");
+          } else if (localTime > remoteTime) {
+            // Push local to remote
+            saveAndSync();
+          }
+        } catch (e) {
+          console.warn("Could not unlock remote vault with current password. Passwords might differ.");
+        }
+      }
+    }
+    UI.updateSyncStatus('synced');
+  } catch (err) {
+    console.error("Sync error:", err);
+    UI.updateSyncStatus('error');
+  }
+}
+
+
+// --- Helper Functions for Base64 <-> ArrayBuffer ---
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+}
+
+function base64ToArrayBuffer(base64) {
+  const binary_string = window.atob(base64);
+  const len = binary_string.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binary_string.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
