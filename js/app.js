@@ -19,6 +19,26 @@ let settings = {
   googleClientId: ''
 };
 
+// Attende che la libreria Google Identity Services sia effettivamente disponibile
+// (lo script è caricato con async/defer e potrebbe non essere pronto subito).
+function waitForGoogleIdentity(timeoutMs = 8000, intervalMs = 150) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const check = () => {
+      if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+        resolve(true);
+        return;
+      }
+      if (Date.now() - start >= timeoutMs) {
+        resolve(false);
+        return;
+      }
+      setTimeout(check, intervalMs);
+    };
+    check();
+  });
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   // Load settings
   const storedSettings = localStorage.getItem(SETTINGS_KEY);
@@ -35,11 +55,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (activeClientId) {
     driveClient = new GoogleDriveClient(activeClientId);
-    try {
-      driveClient.init();
-    } catch (e) {
-      setTimeout(() => driveClient && driveClient.init(), 1000);
-    }
+    // Attende che lo script di Google sia caricato prima di inizializzare,
+    // così quando l'utente clicca "Connetti" il client è già pronto e la
+    // richiesta di accesso parte subito, in risposta diretta al click.
+    waitForGoogleIdentity().then((ready) => {
+      if (ready) {
+        driveClient.init();
+      } else {
+        console.warn("Google Identity Services non disponibile dopo l'attesa iniziale.");
+      }
+    });
   }
 
   UI.initUI(appVault, driveClient);
@@ -370,7 +395,9 @@ function setupEventListeners() {
           const currentId = settings.googleClientId || DEFAULT_GOOGLE_CLIENT_ID;
           if (currentId) {
             driveClient = new GoogleDriveClient(currentId);
-            driveClient.init();
+            waitForGoogleIdentity().then((ready) => {
+              if (ready) driveClient && driveClient.init();
+            });
           } else {
             driveClient = null;
           }

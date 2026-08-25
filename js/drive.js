@@ -32,19 +32,19 @@ export class GoogleDriveClient {
   }
 
   async authenticate() {
-    // Inizializzazione lazy: se non era pronto all'avvio, ci riprova ora che l'utente ha cliccato
+    // Inizializzazione lazy: se non era pronto (caso raro, dato che app.js
+    // attende già che Google Identity Services sia caricato prima di questo
+    // punto), ci riprova in modo sincrono, SENZA attese asincrone: un
+    // eventuale "await" qui spezzerebbe il collegamento diretto con il
+    // click dell'utente e farebbe fallire silenziosamente il primo tentativo
+    // di autenticazione.
     if (!this.tokenClient) {
-      const success = this.init();
-      if (!success) {
-        // Breve attesa di sicurezza se la rete è molto lenta
-        await new Promise(resolve => setTimeout(resolve, 500));
-        this.init();
-      }
+      this.init();
     }
 
     return new Promise((resolve, reject) => {
       if (!this.tokenClient) {
-        reject(new Error("Google Identity Services non disponibile. Verifica la connessione a internet."));
+        reject(new Error("Google Identity Services non ancora pronto. Attendi qualche secondo e riprova."));
         return;
       }
       
