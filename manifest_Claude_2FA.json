@@ -1,0 +1,15 @@
+{
+  "name": "DipaVaultGuard",
+  "short_name": "DipaVaultGuard",
+  "description": "Password Manager Sicuro — Zero Knowledge",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "orientation": "any",
+  "icons": [
+    { "src": "icons_Claude_2FA/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons_Claude_2FA/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
