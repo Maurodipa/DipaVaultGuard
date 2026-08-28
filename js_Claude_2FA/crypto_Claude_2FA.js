@@ -37,7 +37,12 @@ export async function packVault(password, vaultJsonString, existingVaultKeyRaw =
   return { packed, vaultKeyRaw, envelope };
 }
 
-export async function unpackVault(password, packedData) {
+// Verifica la password decifrando SOLO l'involucro (ottiene la vaultKey), SENZA toccare i
+// dati veri e propri del vault (che restano cifrati). Usata quando serve confermare che la
+// password sia corretta prima di decidere se decifrare anche il contenuto sensibile — ad
+// esempio in attesa di una verifica aggiuntiva (2FA): se quella fallisce o viene annullata,
+// il contenuto del vault non è MAI stato decifrato in memoria in questo percorso.
+export async function unwrapVaultKeyWithPassword(password, packedData) {
   const salt = packedData.slice(0, 16);
   const ivKey = packedData.slice(16, 28);
   const encryptedVaultKey = packedData.slice(28, 76); // 32 bytes key + 16 bytes auth tag
@@ -55,8 +60,18 @@ export async function unpackVault(password, packedData) {
   const vaultKeyRawBuffer = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv: ivKey }, derivedKey, encryptedVaultKey
   );
-  const vaultKeyRaw = new Uint8Array(vaultKeyRawBuffer);
+  // Se la password è sbagliata, la riga sopra lancia un'eccezione (fallisce la verifica del
+  // tag di autenticazione AES-GCM) prima ancora di arrivare qui: è così che la password
+  // viene "verificata", senza bisogno di un server o di un hash separato da confrontare.
+  return new Uint8Array(vaultKeyRawBuffer);
+}
 
+export async function unpackVault(password, packedData) {
+  const salt = packedData.slice(0, 16);
+  const ivKey = packedData.slice(16, 28);
+  const encryptedVaultKey = packedData.slice(28, 76); // 32 bytes key + 16 bytes auth tag
+
+  const vaultKeyRaw = await unwrapVaultKeyWithPassword(password, packedData);
   const { vaultJson } = await decryptDataPortion(vaultKeyRaw, packedData);
 
   return { vaultJson, vaultKeyRaw, envelope: { salt, ivKey, encryptedVaultKey } };

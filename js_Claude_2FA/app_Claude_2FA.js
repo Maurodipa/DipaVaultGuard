@@ -1,13 +1,20 @@
-import { Vault } from './vault_Claude_2FA.js';
+import { Vault, verifyPasswordAndGetVaultKey } from './vault_Claude_2FA.js';
 import { GoogleDriveClient } from './drive_Claude_2FA.js';
 import * as UI from './ui_Claude_2FA.js';
 import * as TwoFactor from './twofactor_Claude_2FA.js';
+import * as EmailOTP from './email-otp_Claude_2FA.js';
 
 let appVault = new Vault();
 let driveClient = null;
 let currentVaultFileId = null;
 let appPassword = null; // Stored in memory to allow save/sync
 let pendingTotpSecret = null; // Segreto TOTP generato ma non ancora confermato dall'utente
+let otpVerificationMode = 'email'; // 'email' | 'totp' — modalità attiva sulla schermata screen-otp-verify
+// Durante l'attesa della verifica aggiuntiva (email/TOTP) dopo il percorso password, il vault
+// NON viene ancora decifrato: si tiene solo la vaultKey (32 byte) e il blob cifrato originale,
+// e si decifra il contenuto vero e proprio solo dopo che la verifica extra è stata superata.
+let pendingVaultKeyRaw = null;
+let pendingEncryptedBlob = null;
 
 const LOCAL_STORAGE_KEY = 'dipavaultguard_vault';
 const SETTINGS_KEY = 'dipavaultguard_settings';
@@ -109,19 +116,138 @@ function openTotpSetup() {
 // Mostra il pulsante di sblocco biometrico e/o il campo per il codice 2FA nella schermata
 // di login, solo se registrati su questo dispositivo E se non sono ancora passati più di
 // 7 giorni dall'ultima volta che è stata usata la password completa.
+//
+// IMPORTANTE: quando un metodo rapido è attivo, il form della password viene nascosto di
+// default (non solo "in secondo piano"), e si mostra al suo posto un link esplicito da
+// cliccare deliberatamente. Questo impedisce che l'autoriempimento della password salvata
+// dal telefono renda il secondo fattore inutile (bastava aprire l'app e toccare "Sblocca").
+// Il form password resta comunque raggiungibile come via di emergenza, per non rischiare di
+// bloccare fuori il proprietario del vault se la biometria smette di funzionare.
 function refreshLoginQuickUnlockUI() {
   const container = document.getElementById('login-quick-unlock');
   const btnBiometric = document.getElementById('btn-login-biometric');
   const formTotp = document.getElementById('form-login-totp');
-  if (!container || !btnBiometric || !formTotp) return;
+  const formLogin = document.getElementById('form-login');
+  const fallbackLinkWrap = document.getElementById('login-password-fallback-link');
+  if (!container || !btnBiometric || !formTotp || !formLogin || !fallbackLinkWrap) return;
 
   const canQuickUnlock = TwoFactor.canUseQuickUnlock();
   const showBiometric = canQuickUnlock && TwoFactor.isBiometricRegistered();
   const showTotp = canQuickUnlock && TwoFactor.isTOTPRegistered();
+  const quickUnlockActive = showBiometric || showTotp;
 
-  container.classList.toggle('hidden', !(showBiometric || showTotp));
+  container.classList.toggle('hidden', !quickUnlockActive);
   btnBiometric.classList.toggle('hidden', !showBiometric);
   formTotp.classList.toggle('hidden', !showTotp);
+
+  if (quickUnlockActive) {
+    formLogin.classList.add('hidden');
+    fallbackLinkWrap.classList.remove('hidden');
+  } else {
+    // Nessun metodo rapido attivo (o sono passati più di 7 giorni): la password torna
+    // a essere l'unica via, quindi va mostrata normalmente.
+    formLogin.classList.remove('hidden');
+    fallbackLinkWrap.classList.add('hidden');
+  }
+}
+
+// Rivela manualmente il form della password (via di emergenza), nascondendo il link che lo
+// mostra. Usata sia dal click esplicito dell'utente sia automaticamente se un tentativo di
+// sblocco biometrico/TOTP fallisce, per non lasciare la persona bloccata senza opzioni visibili.
+function revealPasswordLoginForm() {
+  const formLogin = document.getElementById('form-login');
+  const fallbackLinkWrap = document.getElementById('login-password-fallback-link');
+  if (formLogin) formLogin.classList.remove('hidden');
+  if (fallbackLinkWrap) fallbackLinkWrap.classList.add('hidden');
+}
+
+// Avvia la verifica aggiuntiva obbligatoria dopo che la password è risultata corretta, quando
+// biometria e/o TOTP sono già configurati su questo dispositivo: la sola password non deve
+// mai bastare in quel caso. Prova prima l'email (se configurata); se l'invio fallisce (es.
+// offline) o l'email non è configurata, propone il codice TOTP come alternativa (se
+// disponibile). Se non c'è alcun metodo utilizzabile, annulla e ributta alla schermata di login.
+async function startPostPasswordVerification() {
+  const totpFallbackAvailable = TwoFactor.isTOTPRegistered();
+  document.getElementById('otp-verify-error').classList.add('hidden');
+  document.getElementById('otp-verify-code').value = '';
+  document.getElementById('otp-use-totp-instead').classList.toggle('hidden', !totpFallbackAvailable);
+  document.getElementById('btn-otp-resend').classList.add('hidden');
+
+  UI.showScreen('screen-otp-verify');
+  UI.resetAutoLockTimer(); // la vaultKey temporanea è comunque sensibile: non lasciarla in sospeso a tempo indeterminato
+
+  if (EmailOTP.isEmailOtpConfigured()) {
+    await trySendEmailOtp(totpFallbackAvailable);
+  } else if (totpFallbackAvailable) {
+    switchOtpScreenToTotpMode();
+  } else {
+    UI.showToast("Nessun metodo di verifica aggiuntivo configurato. Configuralo nelle impostazioni prima di riprovare.", "error");
+    cancelPostPasswordVerification();
+  }
+}
+
+async function trySendEmailOtp(totpFallbackAvailable) {
+  otpVerificationMode = 'email';
+  document.getElementById('otp-verify-mode').textContent = 'Ti abbiamo inviato un codice via email. Controlla la posta in arrivo.';
+  document.getElementById('otp-use-totp-instead').classList.toggle('hidden', !totpFallbackAvailable);
+  try {
+    await EmailOTP.sendOtp();
+    document.getElementById('btn-otp-resend').classList.remove('hidden');
+    UI.showToast("Codice inviato via email", "info");
+  } catch (err) {
+    console.error(err);
+    if (totpFallbackAvailable) {
+      UI.showToast("Invio email non riuscito (sei offline?). Usa il codice dell'app authenticator.", "warning");
+      switchOtpScreenToTotpMode();
+    } else {
+      UI.showToast("Invio email non riuscito e nessun codice TOTP configurato come alternativa.", "error");
+      cancelPostPasswordVerification();
+    }
+  }
+}
+
+function switchOtpScreenToTotpMode() {
+  otpVerificationMode = 'totp';
+  document.getElementById('otp-verify-mode').textContent = 'Inserisci il codice a 6 cifre dalla tua app authenticator.';
+  document.getElementById('otp-use-totp-instead').classList.add('hidden');
+  document.getElementById('btn-otp-resend').classList.add('hidden');
+  document.getElementById('otp-verify-code').value = '';
+  document.getElementById('otp-verify-code').focus();
+}
+
+// Verifica completata con successo: SOLO ORA si decifra davvero il contenuto del vault
+// (finora si aveva solo la vaultKey temporanea, non i dati), e si procede alla dashboard
+// esattamente come un login normale.
+async function completePostPasswordVerification() {
+  await appVault.unlockWithVaultKey(pendingVaultKeyRaw, pendingEncryptedBlob);
+  pendingVaultKeyRaw = null;
+  pendingEncryptedBlob = null;
+
+  TwoFactor.markFullPasswordAuth();
+  document.getElementById('otp-verify-code').value = '';
+  UI.showToast("Verifica completata, vault sbloccato", "success");
+  UI.showScreen('screen-dashboard');
+  UI.renderItemList(appVault.getAllItems());
+  UI.renderCategories(appVault.getCategories(), null);
+  UI.resetAutoLockTimer();
+  if (driveClient && driveClient.isAuthenticated()) {
+    syncFromDrive();
+  }
+}
+
+// Annulla la verifica aggiuntiva. Il contenuto del vault non è MAI stato decifrato in questo
+// percorso (solo la vaultKey grezza era temporaneamente in memoria): basta sovrascrivere quei
+// 32 byte e scartarli, senza dover "ribloccare" dati che non sono mai esistiti in chiaro.
+function cancelPostPasswordVerification() {
+  EmailOTP.clearPendingOtp();
+  if (pendingVaultKeyRaw) {
+    crypto.getRandomValues(pendingVaultKeyRaw);
+    pendingVaultKeyRaw = null;
+  }
+  pendingEncryptedBlob = null;
+  appPassword = null;
+  UI.showScreen('screen-login');
+  refreshLoginQuickUnlockUI();
 }
 
 async function saveAndSync() {
@@ -175,12 +301,27 @@ function setupEventListeners() {
 
   // Auto Lock
   document.addEventListener('auto-lock', () => {
-    if (appVault.isUnlocked()) {
+    const wasUnlocked = appVault.isUnlocked();
+    const hadPendingVerification = !!pendingVaultKeyRaw;
+
+    if (wasUnlocked) {
       appVault.lock();
+    }
+    if (hadPendingVerification) {
+      // In attesa della verifica extra (email/TOTP): il contenuto del vault non è mai stato
+      // decifrato, basta scartare la vaultKey temporanea rimasta in sospeso.
+      crypto.getRandomValues(pendingVaultKeyRaw);
+      pendingVaultKeyRaw = null;
+      pendingEncryptedBlob = null;
+      EmailOTP.clearPendingOtp();
+    }
+
+    if (wasUnlocked || hadPendingVerification) {
       appPassword = null;
       UI.showToast("Vault bloccato automaticamente per inattività", "info");
       UI.showScreen('screen-login');
       document.getElementById('login-password').value = '';
+      refreshLoginQuickUnlockUI();
     }
   });
 
@@ -243,11 +384,26 @@ function setupEventListeners() {
 
       try {
         const encryptedBlob = base64ToArrayBuffer(localVaultData);
+
+        // Se biometria e/o TOTP sono già configurati su questo dispositivo, la sola password
+        // non deve mai bastare: verifichiamo che sia corretta (serve comunque un tentativo di
+        // decifratura per saperlo, non c'è modo di evitarlo in un'app zero-knowledge), ma SENZA
+        // decifrare il contenuto vero e proprio del vault. Il contenuto sensibile viene
+        // decifrato solo più avanti, dopo che la verifica extra è stata superata con successo.
+        if (TwoFactor.isBiometricRegistered() || TwoFactor.isTOTPRegistered()) {
+          const vaultKeyRaw = await verifyPasswordAndGetVaultKey(pwd, encryptedBlob);
+          pendingVaultKeyRaw = vaultKeyRaw;
+          pendingEncryptedBlob = encryptedBlob;
+          document.getElementById('login-password').value = '';
+          await startPostPasswordVerification();
+          return;
+        }
+
         await appVault.unlock(pwd, encryptedBlob);
         appPassword = pwd;
-        TwoFactor.markFullPasswordAuth();
-        
         document.getElementById('login-password').value = '';
+
+        TwoFactor.markFullPasswordAuth();
         UI.showToast("Vault sbloccato", "success");
         UI.showScreen('screen-dashboard');
         UI.renderItemList(appVault.getAllItems());
@@ -263,6 +419,105 @@ function setupEventListeners() {
         errorDiv.textContent = "Password principale errata";
         errorDiv.classList.remove('hidden');
         UI.showScreen('screen-login');
+      }
+    });
+  }
+
+  // Schermata di verifica aggiuntiva dopo la password (OTP email o TOTP di ripiego)
+  const formOtpVerify = document.getElementById('form-otp-verify');
+  if (formOtpVerify) {
+    formOtpVerify.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const code = document.getElementById('otp-verify-code').value;
+      const errorDiv = document.getElementById('otp-verify-error');
+      errorDiv.classList.add('hidden');
+      try {
+        if (otpVerificationMode === 'totp') {
+          await TwoFactor.verifyRegisteredTOTPCode(code);
+        } else {
+          EmailOTP.verifyOtp(code);
+        }
+        await completePostPasswordVerification();
+      } catch (err) {
+        console.error(err);
+        errorDiv.textContent = err.message || "Codice non valido";
+        errorDiv.classList.remove('hidden');
+      }
+    });
+  }
+
+  const btnOtpResend = document.getElementById('btn-otp-resend');
+  if (btnOtpResend) {
+    btnOtpResend.addEventListener('click', async () => {
+      btnOtpResend.disabled = true;
+      btnOtpResend.textContent = 'Invio in corso...';
+      await trySendEmailOtp(TwoFactor.isTOTPRegistered());
+      btnOtpResend.disabled = false;
+      btnOtpResend.textContent = 'Invia di nuovo il codice';
+    });
+  }
+
+  const btnOtpUseTotpInstead = document.getElementById('otp-use-totp-instead');
+  if (btnOtpUseTotpInstead) {
+    btnOtpUseTotpInstead.addEventListener('click', () => {
+      switchOtpScreenToTotpMode();
+    });
+  }
+
+  const btnOtpCancel = document.getElementById('btn-otp-cancel');
+  if (btnOtpCancel) {
+    btnOtpCancel.addEventListener('click', () => {
+      cancelPostPasswordVerification();
+    });
+  }
+
+  // Impostazioni: configurazione OTP via email (EmailJS)
+  const formEmailOtpSettings = document.getElementById('form-email-otp-settings');
+  if (formEmailOtpSettings) {
+    formEmailOtpSettings.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const recipientEmail = document.getElementById('email-otp-recipient').value.trim();
+      const serviceId = document.getElementById('email-otp-service-id').value.trim();
+      const templateId = document.getElementById('email-otp-template-id').value.trim();
+      const publicKey = document.getElementById('email-otp-public-key').value.trim();
+
+      if (!recipientEmail || !serviceId || !templateId || !publicKey) {
+        UI.showToast("Compila tutti i campi", "error");
+        return;
+      }
+
+      EmailOTP.saveConfig({ recipientEmail, serviceId, templateId, publicKey });
+      UI.showToast("Configurazione salvata", "success");
+      UI.updateEmailOtpSettingsUI();
+    });
+  }
+
+  const btnEmailOtpTest = document.getElementById('btn-email-otp-test');
+  if (btnEmailOtpTest) {
+    btnEmailOtpTest.addEventListener('click', async () => {
+      // Salva prima la configurazione corrente dai campi, così il test usa quella appena scritta
+      const recipientEmail = document.getElementById('email-otp-recipient').value.trim();
+      const serviceId = document.getElementById('email-otp-service-id').value.trim();
+      const templateId = document.getElementById('email-otp-template-id').value.trim();
+      const publicKey = document.getElementById('email-otp-public-key').value.trim();
+      if (!recipientEmail || !serviceId || !templateId || !publicKey) {
+        UI.showToast("Compila tutti i campi prima di inviare una prova", "error");
+        return;
+      }
+      EmailOTP.saveConfig({ recipientEmail, serviceId, templateId, publicKey });
+
+      btnEmailOtpTest.disabled = true;
+      btnEmailOtpTest.textContent = 'Invio in corso...';
+      try {
+        await EmailOTP.sendTestEmail();
+        UI.showToast("Email di prova inviata, controlla la posta in arrivo", "success");
+        UI.updateEmailOtpSettingsUI();
+      } catch (err) {
+        console.error(err);
+        UI.showToast(err.message || "Invio non riuscito", "error");
+      } finally {
+        btnEmailOtpTest.disabled = false;
+        btnEmailOtpTest.textContent = 'Invia email di prova';
       }
     });
   }
@@ -295,7 +550,17 @@ function setupEventListeners() {
       } catch (err) {
         console.error(err);
         UI.showToast(err.message || "Sblocco biometrico non riuscito. Usa la password.", "error");
+        revealPasswordLoginForm();
       }
+    });
+  }
+
+  // Link "usa la password" nella schermata di login: rivela il form password su richiesta
+  // esplicita dell'utente (via di emergenza quando biometria/TOTP sono attivi ma non disponibili)
+  const btnShowPasswordLogin = document.getElementById('btn-show-password-login');
+  if (btnShowPasswordLogin) {
+    btnShowPasswordLogin.addEventListener('click', () => {
+      revealPasswordLoginForm();
     });
   }
 
@@ -328,6 +593,7 @@ function setupEventListeners() {
       } catch (err) {
         console.error(err);
         UI.showToast(err.message || "Codice 2FA errato", "error");
+        revealPasswordLoginForm();
       }
     });
   }

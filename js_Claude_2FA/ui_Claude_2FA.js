@@ -90,6 +90,7 @@ const STRINGS = {
 
 import { generatePassword, generatePassphrase, calculateStrength } from './password-gen_Claude_2FA.js';
 import { isBiometricRegistered, isTOTPRegistered } from './twofactor_Claude_2FA.js';
+import { isEmailOtpConfigured, getConfig as getEmailOtpConfig } from './email-otp_Claude_2FA.js';
 
 let appVault = null;
 let appDriveClient = null;
@@ -635,8 +636,32 @@ export function openSettings() {
     biometricEnabled: isBiometricRegistered(),
     totpEnabled: isTOTPRegistered()
   });
+  updateEmailOtpSettingsUI();
 
   modal.classList.remove('hidden');
+}
+
+// Aggiorna la sezione "Verifica via email (OTP)" nelle impostazioni: stato + precompila i
+// campi con la configurazione già salvata (se presente), così l'utente non deve reinserirla
+// ogni volta che apre le impostazioni.
+export function updateEmailOtpSettingsUI() {
+  const statusEl = document.getElementById('settings-email-otp-status');
+  const configured = isEmailOtpConfigured();
+  if (statusEl) {
+    statusEl.textContent = configured ? 'Configurato' : 'Non configurato';
+  }
+
+  const cfg = getEmailOtpConfig();
+  const recipientEl = document.getElementById('email-otp-recipient');
+  const serviceEl = document.getElementById('email-otp-service-id');
+  const templateEl = document.getElementById('email-otp-template-id');
+  const publicKeyEl = document.getElementById('email-otp-public-key');
+  if (cfg && recipientEl && serviceEl && templateEl && publicKeyEl) {
+    recipientEl.value = cfg.recipientEmail || '';
+    serviceEl.value = cfg.serviceId || '';
+    templateEl.value = cfg.templateId || '';
+    publicKeyEl.value = cfg.publicKey || '';
+  }
 }
 
 // Aggiorna la sezione "Autenticazione a due fattori" nelle impostazioni in base allo stato

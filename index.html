@@ -11,13 +11,14 @@
     <link rel="icon" type="image/png" href="icons_Claude_2FA/icon-192.png">
     
     <!-- Security -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.google.com; connect-src 'self' https://www.googleapis.com https://accounts.google.com; frame-src https://accounts.google.com;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.google.com; connect-src 'self' https://www.googleapis.com https://accounts.google.com https://api.emailjs.com; frame-src https://accounts.google.com;">
     
     <!-- Styles -->
     <link rel="stylesheet" href="css_Claude_2FA/style_Claude_2FA.css">
     
     <!-- Scripts -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
     <script type="module" src="js_Claude_2FA/app_Claude_2FA.js"></script>
     <script>
       // Registrazione del Service Worker per il funzionamento offline (PWA).
@@ -215,7 +216,10 @@
                     </div>
                     <button type="submit" class="btn btn-primary btn-block">Sblocca con codice 2FA</button>
                 </form>
-                <div class="divider">oppure usa la password</div>
+            </div>
+
+            <div id="login-password-fallback-link" class="hidden text-center mb-4">
+                <button type="button" id="btn-show-password-login" class="btn btn-text text-sm text-muted">Problemi con la biometria o il codice? Usa la password</button>
             </div>
             
             <form id="form-login" class="form">
@@ -224,7 +228,9 @@
                 <div class="form-group">
                     <label for="login-password">Password principale</label>
                     <div class="input-with-icon">
-                        <input type="password" id="login-password" required>
+                        <input type="password" id="login-password" name="login-password-nofill" required
+                               autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"
+                               readonly onfocus="this.removeAttribute('readonly')">
                         <button type="button" class="btn-icon toggle-password" data-target="login-password">
                             <svg class="icon"><use href="#icon-eye"></use></svg>
                         </button>
@@ -240,6 +246,30 @@
                 <svg class="icon mr-2"><use href="#icon-cloud"></use></svg>
                 Connetti Google Drive
             </button>
+        </div>
+    </section>
+
+    <!-- Screen: Verifica aggiuntiva dopo password (OTP email o TOTP di ripiego) -->
+    <section id="screen-otp-verify" class="screen hidden flex-center bg-gray">
+        <div class="card">
+            <div class="logo-container">
+                <svg class="icon icon-shield text-primary"><use href="#icon-shield"></use></svg>
+                <h1>Verifica aggiuntiva</h1>
+            </div>
+            <p id="otp-verify-mode" class="text-center text-sm text-muted mb-4">Ti abbiamo inviato un codice via email.</p>
+
+            <form id="form-otp-verify">
+                <div id="otp-verify-error" class="alert alert-danger hidden"></div>
+                <div class="form-group">
+                    <label for="otp-verify-code">Codice a 6 cifre</label>
+                    <input type="text" id="otp-verify-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="000000" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Verifica e sblocca</button>
+            </form>
+
+            <button type="button" id="btn-otp-resend" class="btn btn-text btn-block text-sm mt-2 hidden">Invia di nuovo il codice</button>
+            <button type="button" id="otp-use-totp-instead" class="btn btn-text btn-block text-sm mt-1 hidden">Usa invece il codice dell'app authenticator</button>
+            <button type="button" id="btn-otp-cancel" class="btn btn-secondary btn-block mt-3">Annulla</button>
         </div>
     </section>
 
@@ -597,6 +627,35 @@
                         <button class="btn btn-secondary btn-sm" id="btn-enable-totp">Configura</button>
                         <button class="btn btn-outline btn-danger btn-sm hidden" id="btn-disable-totp">Disattiva</button>
                     </div>
+                </section>
+
+                <section class="settings-section">
+                    <h3>Verifica via email (OTP)</h3>
+                    <p class="text-xs text-muted mb-2">Se sblocchi il vault con la password (invece che con biometria/TOTP), ti verrà chiesto anche un codice inviato via email — l'accesso con la sola password non è mai sufficiente una volta configurato il 2FA. Se sei offline, verrà proposto il codice TOTP come alternativa (se configurato). Richiede un account gratuito su <a href="https://www.emailjs.com" target="_blank" rel="noopener">EmailJS</a>.</p>
+
+                    <form id="form-email-otp-settings">
+                        <div class="form-group">
+                            <label for="email-otp-recipient">Email a cui inviare il codice</label>
+                            <input type="text" id="email-otp-recipient" placeholder="tuonome@email.com">
+                        </div>
+                        <div class="form-group">
+                            <label for="email-otp-service-id">Service ID (EmailJS)</label>
+                            <input type="text" id="email-otp-service-id" placeholder="service_xxxxxxx">
+                        </div>
+                        <div class="form-group">
+                            <label for="email-otp-template-id">Template ID (EmailJS)</label>
+                            <input type="text" id="email-otp-template-id" placeholder="template_xxxxxxx">
+                        </div>
+                        <div class="form-group">
+                            <label for="email-otp-public-key">Public Key (EmailJS)</label>
+                            <input type="text" id="email-otp-public-key" placeholder="xxxxxxxxxxxxxxxx">
+                        </div>
+                        <div class="setting-actions">
+                            <button type="submit" class="btn btn-primary btn-sm">Salva configurazione</button>
+                            <button type="button" id="btn-email-otp-test" class="btn btn-secondary btn-sm">Invia email di prova</button>
+                        </div>
+                    </form>
+                    <p class="setting-desc mt-2" id="settings-email-otp-status">Non configurato</p>
                 </section>
                 
                 <section class="settings-section">

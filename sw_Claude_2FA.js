@@ -1,4 +1,4 @@
-const CACHE_NAME = 'dipavaultguard-v3';
+const CACHE_NAME = 'dipavaultguard-v4';
 // NOTA: percorsi RELATIVI (senza "/" iniziale). Il sito vive in un sottopercorso su GitHub
 // Pages (es. https://tuonome.github.io/nome-repo/): un percorso assoluto come "/index.html"
 // punterebbe alla radice del dominio invece che alla cartella del sito, e non verrebbe mai
@@ -12,6 +12,7 @@ const ASSETS_TO_CACHE = [
   './js_Claude_2FA/crypto_Claude_2FA.js',
   './js_Claude_2FA/vault_Claude_2FA.js',
   './js_Claude_2FA/twofactor_Claude_2FA.js',
+  './js_Claude_2FA/email-otp_Claude_2FA.js',
   './js_Claude_2FA/drive_Claude_2FA.js',
   './js_Claude_2FA/password-gen_Claude_2FA.js',
   './manifest_Claude_2FA.json',
@@ -45,7 +46,7 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  if (url.hostname.includes('googleapis.com') || url.hostname.includes('accounts.google.com')) {
+  if (url.hostname.includes('googleapis.com') || url.hostname.includes('accounts.google.com') || url.hostname.includes('api.emailjs.com')) {
     return;
   }
   event.respondWith(

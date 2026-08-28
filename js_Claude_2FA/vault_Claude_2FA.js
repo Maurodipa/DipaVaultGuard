@@ -1,4 +1,17 @@
-import { packVault, unpackVault, unpackVaultWithKey, repackVaultData, wipeBuffer } from './crypto_Claude_2FA.js';
+import { packVault, unpackVault, unpackVaultWithKey, repackVaultData, wipeBuffer, unwrapVaultKeyWithPassword } from './crypto_Claude_2FA.js';
+
+// Verifica SOLO che la password sia corretta e restituisce la vaultKey grezza, SENZA
+// decifrare né esporre il contenuto del vault (items/categorie restano cifrati). Pensata per
+// i casi in cui serve confermare la password prima di una verifica aggiuntiva (2FA): se quella
+// fallisce, il contenuto del vault non sarà mai esistito in chiaro in questa sessione.
+// Non è un metodo della classe Vault perché non modifica né richiede lo stato di un'istanza.
+export async function verifyPasswordAndGetVaultKey(password, packedData) {
+  try {
+    return await unwrapVaultKeyWithPassword(password, packedData);
+  } catch (e) {
+    throw new Error("Password errata o dati corrotti");
+  }
+}
 
 export class Vault {
   constructor() {

@@ -334,6 +334,19 @@ export async function unlockWithTOTP(code) {
   return vaultKeyRaw;
 }
 
+// Verifica un codice TOTP contro il segreto già registrato su questo dispositivo, SENZA
+// svincolare la vaultKey. Usata come verifica aggiuntiva pura (es. dopo il percorso password,
+// quando la vaultKey è già nota per altra via e serve solo confermare il possesso dell'app
+// authenticator).
+export async function verifyRegisteredTOTPCode(code) {
+  const recordRaw = localStorage.getItem(TOTP_KEY);
+  if (!recordRaw) throw new Error('Codice 2FA non configurato su questo dispositivo.');
+  const record = JSON.parse(recordRaw);
+  const valid = await verifyTOTPCode(record.secret, code);
+  if (!valid) throw new Error('Codice 2FA errato.');
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Helper Base64 <-> ArrayBuffer (per salvare in localStorage, che accetta solo stringhe)
 // ---------------------------------------------------------------------------
