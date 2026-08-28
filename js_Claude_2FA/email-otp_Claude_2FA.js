@@ -51,6 +51,12 @@ function ensureEmailJsReady() {
 // Genera un nuovo codice, lo invia via email con EmailJS e lo tiene in memoria in attesa di
 // verifica. Lancia un errore se l'invio fallisce (es. dispositivo offline, configurazione
 // errata): in quel caso l'app dovrebbe proporre il TOTP come alternativa, se disponibile.
+//
+// NOTA sui nomi dei parametri: "passcode", "time" ed "email" corrispondono al template
+// predefinito "One-Time Password" fornito da EmailJS. Se usi un template diverso con nomi di
+// variabili differenti, aggiorna questi nomi di conseguenza (in particolare il campo "To
+// Email" nelle impostazioni del template EmailJS deve corrispondere esattamente alla chiave
+// usata qui per il destinatario, altrimenti l'invio fallisce senza un errore chiaro).
 export async function sendOtp() {
   const cfg = getConfig();
   if (!cfg || !isEmailOtpConfigured()) {
@@ -59,19 +65,26 @@ export async function sendOtp() {
   ensureEmailJsReady();
 
   const code = generateCode();
-  pendingOtp = { code, expiresAt: Date.now() + OTP_VALIDITY_MS, attempts: 0 };
+  const expiresAt = Date.now() + OTP_VALIDITY_MS;
+  pendingOtp = { code, expiresAt, attempts: 0 };
 
   try {
     await emailjs.send(cfg.serviceId, cfg.templateId, {
-      otp_code: code,
-      to_email: cfg.recipientEmail
+      passcode: code,
+      time: formatExpiryTime(expiresAt),
+      email: cfg.recipientEmail
     }, cfg.publicKey);
   } catch (e) {
+    console.error('EmailJS send error:', e);
     pendingOtp = null;
-    throw new Error('Invio email non riuscito. Controlla la connessione internet.');
+    throw new Error('Invio email non riuscito. Controlla la connessione internet e la configurazione.');
   }
 
   return true;
+}
+
+function formatExpiryTime(timestampMs) {
+  return new Date(timestampMs).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
 }
 
 // Invia un'email di prova (senza impostare un OTP "in attesa" reale), usata dal pulsante
@@ -84,10 +97,16 @@ export async function sendTestEmail() {
   ensureEmailJsReady();
 
   const testCode = generateCode();
-  await emailjs.send(cfg.serviceId, cfg.templateId, {
-    otp_code: testCode,
-    to_email: cfg.recipientEmail
-  }, cfg.publicKey);
+  try {
+    await emailjs.send(cfg.serviceId, cfg.templateId, {
+      passcode: testCode,
+      time: formatExpiryTime(Date.now() + OTP_VALIDITY_MS),
+      email: cfg.recipientEmail
+    }, cfg.publicKey);
+  } catch (e) {
+    console.error('EmailJS test send error:', e);
+    throw new Error('Invio non riuscito. Controlla Service ID, Template ID e Public Key.');
+  }
 
   return true;
 }
