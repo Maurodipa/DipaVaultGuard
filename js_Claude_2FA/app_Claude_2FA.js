@@ -1,4 +1,4 @@
-import { Vault, verifyPasswordAndGetVaultKey } from './vault_Claude_2FA.js';
+import { Vault, verifyPasswordAndGetVaultKey, isSecretKeyRequired, parseSecretKey } from './vault_Claude_2FA.js';
 import { GoogleDriveClient } from './drive_Claude_2FA.js';
 import * as UI from './ui_Claude_2FA.js';
 import * as TwoFactor from './twofactor_Claude_2FA.js';
@@ -15,9 +15,14 @@ let otpVerificationMode = 'email'; // 'email' | 'totp' — modalità attiva sull
 // e si decifra il contenuto vero e proprio solo dopo che la verifica extra è stata superata.
 let pendingVaultKeyRaw = null;
 let pendingEncryptedBlob = null;
+let pendingPersistLocally = false; // se true, al termine della verifica il blob va salvato anche in localStorage (ripristino da Drive)
 
 const LOCAL_STORAGE_KEY = 'dipavaultguard_vault';
 const SETTINGS_KEY = 'dipavaultguard_settings';
+// Secret Key del 2SKD: SOLO locale, MAI sincronizzata su Drive (è l'intero senso della
+// protezione). Salvata qui dopo il primo inserimento su un dispositivo, così non va
+// re-inserita a ogni sblocco — esattamente come fa 1Password.
+const SECRET_KEY_STORAGE_KEY = 'dipavaultguard_secret_key';
 const CLIENT_ID_KEY = 'dipavaultguard_client_id';
 // Determina quale Client ID usare:
 // Se l'utente ne ha salvato uno personalizzato nelle impostazioni usa quello, altrimenti usa il default
@@ -161,6 +166,85 @@ function revealPasswordLoginForm() {
   if (fallbackLinkWrap) fallbackLinkWrap.classList.add('hidden');
 }
 
+// Vero se questo vault richiede una verifica aggiuntiva oltre alla password: se biometria o
+// TOTP sono registrati su questo dispositivo, OPPURE se è configurato l'OTP via email (locale
+// o appena adottato da Drive). Quest'ultimo caso è importante: rende il requisito "serve altro
+// oltre alla password" una proprietà del vault, non solo di questo dispositivo — così anche
+// ripristinando il vault su un browser/dispositivo dove non è mai stata configurata la
+// biometria, se la configurazione OTP viene trovata su Drive, la password da sola non basta.
+function requiresExtraVerification() {
+  return TwoFactor.isBiometricRegistered() || TwoFactor.isTOTPRegistered() || EmailOTP.isEmailOtpConfigured();
+}
+
+// Recupera la Secret Key necessaria per sbloccare un blob 2SKD: se è già stata salvata su
+// questo dispositivo la riusa senza chiedere nulla; altrimenti la richiede all'utente (una
+// tantum per dispositivo) e la salva per le volte successive. Restituisce null se il blob non
+// richiede affatto la Secret Key (formato v1, il caso comune).
+function getSecretKeyRawForBlob(blob) {
+  if (!isSecretKeyRequired(blob)) return null;
+
+  const cached = localStorage.getItem(SECRET_KEY_STORAGE_KEY);
+  if (cached) return parseSecretKey(cached);
+
+  const entered = prompt("Questo vault richiede anche la Secret Key (oltre alla password) — l'hai salvata quando hai attivato la protezione 2SKD:");
+  if (!entered || !entered.trim()) {
+    throw new Error("Secret Key necessaria per sbloccare questo vault.");
+  }
+  const trimmed = entered.trim();
+  localStorage.setItem(SECRET_KEY_STORAGE_KEY, trimmed);
+  return parseSecretKey(trimmed);
+}
+
+// Verifica la password su un blob cifrato qualsiasi (locale o appena scaricato da Drive) e,
+// se serve, avvia la verifica aggiuntiva SENZA decifrare ancora il contenuto del vault.
+// Se `persistLocally` è vero, il blob verrà salvato anche in localStorage una volta completata
+// (o immediatamente, se non serve alcuna verifica extra) — usato per il ripristino da Drive.
+async function unlockBlobWithPasswordAndVerification(pwd, blob, persistLocally = false) {
+  const secretKeyRaw = getSecretKeyRawForBlob(blob); // null se il blob non è 2SKD
+
+  if (requiresExtraVerification()) {
+    const vaultKeyRaw = await verifyPasswordAndGetVaultKey(pwd, blob, secretKeyRaw);
+    pendingVaultKeyRaw = vaultKeyRaw;
+    pendingEncryptedBlob = blob;
+    pendingPersistLocally = persistLocally;
+    await startPostPasswordVerification();
+    return;
+  }
+
+  await appVault.unlock(pwd, blob, secretKeyRaw);
+  appPassword = pwd;
+  if (persistLocally) {
+    localStorage.setItem(LOCAL_STORAGE_KEY, arrayBufferToBase64(blob));
+  }
+  TwoFactor.markFullPasswordAuth();
+  UI.showToast("Vault sbloccato", "success");
+  UI.showScreen('screen-dashboard');
+  UI.renderItemList(appVault.getAllItems());
+  UI.renderCategories(appVault.getCategories(), null);
+  UI.resetAutoLockTimer();
+  if (driveClient && driveClient.isAuthenticated()) {
+    syncFromDrive();
+  }
+}
+
+// Scarica (se presente) la configurazione OTP via email salvata su Drive e la adotta
+// localmente, così questo dispositivo la userà da subito, anche se non era mai stata
+// configurata qui prima.
+async function adoptRemoteOtpConfigIfPresent() {
+  if (!driveClient || !driveClient.isAuthenticated()) return;
+  try {
+    const file = await driveClient.findOtpConfigFile();
+    if (file) {
+      const remoteConfig = await driveClient.readOtpConfigFile(file.id);
+      if (remoteConfig && remoteConfig.serviceId && remoteConfig.templateId && remoteConfig.publicKey && remoteConfig.recipientEmail) {
+        EmailOTP.saveConfig(remoteConfig);
+      }
+    }
+  } catch (e) {
+    console.warn("Impossibile recuperare la configurazione OTP da Drive:", e);
+  }
+}
+
 // Avvia la verifica aggiuntiva obbligatoria dopo che la password è risultata corretta, quando
 // biometria e/o TOTP sono già configurati su questo dispositivo: la sola password non deve
 // mai bastare in quel caso. Prova prima l'email (se configurata); se l'invio fallisce (es.
@@ -220,8 +304,12 @@ function switchOtpScreenToTotpMode() {
 // esattamente come un login normale.
 async function completePostPasswordVerification() {
   await appVault.unlockWithVaultKey(pendingVaultKeyRaw, pendingEncryptedBlob);
+  if (pendingPersistLocally) {
+    localStorage.setItem(LOCAL_STORAGE_KEY, arrayBufferToBase64(pendingEncryptedBlob));
+  }
   pendingVaultKeyRaw = null;
   pendingEncryptedBlob = null;
+  pendingPersistLocally = false;
 
   TwoFactor.markFullPasswordAuth();
   document.getElementById('otp-verify-code').value = '';
@@ -245,8 +333,10 @@ function cancelPostPasswordVerification() {
     pendingVaultKeyRaw = null;
   }
   pendingEncryptedBlob = null;
+  const wasPersisting = pendingPersistLocally; // true se veniva da un ripristino Drive (nessun vault locale ancora)
+  pendingPersistLocally = false;
   appPassword = null;
-  UI.showScreen('screen-login');
+  UI.showScreen(wasPersisting ? 'screen-setup' : 'screen-login');
   refreshLoginQuickUnlockUI();
 }
 
@@ -303,6 +393,7 @@ function setupEventListeners() {
   document.addEventListener('auto-lock', () => {
     const wasUnlocked = appVault.isUnlocked();
     const hadPendingVerification = !!pendingVaultKeyRaw;
+    const wasPersisting = pendingPersistLocally;
 
     if (wasUnlocked) {
       appVault.lock();
@@ -313,13 +404,14 @@ function setupEventListeners() {
       crypto.getRandomValues(pendingVaultKeyRaw);
       pendingVaultKeyRaw = null;
       pendingEncryptedBlob = null;
+      pendingPersistLocally = false;
       EmailOTP.clearPendingOtp();
     }
 
     if (wasUnlocked || hadPendingVerification) {
       appPassword = null;
       UI.showToast("Vault bloccato automaticamente per inattività", "info");
-      UI.showScreen('screen-login');
+      UI.showScreen(wasPersisting ? 'screen-setup' : 'screen-login');
       document.getElementById('login-password').value = '';
       refreshLoginQuickUnlockUI();
     }
@@ -384,36 +476,10 @@ function setupEventListeners() {
 
       try {
         const encryptedBlob = base64ToArrayBuffer(localVaultData);
-
-        // Se biometria e/o TOTP sono già configurati su questo dispositivo, la sola password
-        // non deve mai bastare: verifichiamo che sia corretta (serve comunque un tentativo di
-        // decifratura per saperlo, non c'è modo di evitarlo in un'app zero-knowledge), ma SENZA
-        // decifrare il contenuto vero e proprio del vault. Il contenuto sensibile viene
-        // decifrato solo più avanti, dopo che la verifica extra è stata superata con successo.
-        if (TwoFactor.isBiometricRegistered() || TwoFactor.isTOTPRegistered()) {
-          const vaultKeyRaw = await verifyPasswordAndGetVaultKey(pwd, encryptedBlob);
-          pendingVaultKeyRaw = vaultKeyRaw;
-          pendingEncryptedBlob = encryptedBlob;
-          document.getElementById('login-password').value = '';
-          await startPostPasswordVerification();
-          return;
-        }
-
-        await appVault.unlock(pwd, encryptedBlob);
-        appPassword = pwd;
         document.getElementById('login-password').value = '';
-
-        TwoFactor.markFullPasswordAuth();
-        UI.showToast("Vault sbloccato", "success");
-        UI.showScreen('screen-dashboard');
-        UI.renderItemList(appVault.getAllItems());
-        UI.renderCategories(appVault.getCategories(), null);
-        UI.resetAutoLockTimer();
-        
-        // Try to sync if connected
-        if (driveClient && driveClient.isAuthenticated()) {
-          syncFromDrive();
-        }
+        // Verifica la password ed eventualmente avvia la verifica aggiuntiva (biometria/TOTP
+        // registrati qui, o OTP via email configurato) SENZA decifrare subito il vault.
+        await unlockBlobWithPasswordAndVerification(pwd, encryptedBlob, false);
       } catch (err) {
         console.error(err);
         errorDiv.textContent = "Password principale errata";
@@ -474,7 +540,7 @@ function setupEventListeners() {
   // Impostazioni: configurazione OTP via email (EmailJS)
   const formEmailOtpSettings = document.getElementById('form-email-otp-settings');
   if (formEmailOtpSettings) {
-    formEmailOtpSettings.addEventListener('submit', (e) => {
+    formEmailOtpSettings.addEventListener('submit', async (e) => {
       e.preventDefault();
       const recipientEmail = document.getElementById('email-otp-recipient').value.trim();
       const serviceId = document.getElementById('email-otp-service-id').value.trim();
@@ -486,9 +552,22 @@ function setupEventListeners() {
         return;
       }
 
-      EmailOTP.saveConfig({ recipientEmail, serviceId, templateId, publicKey });
+      const config = { recipientEmail, serviceId, templateId, publicKey };
+      EmailOTP.saveConfig(config);
       UI.showToast("Configurazione salvata", "success");
       UI.updateEmailOtpSettingsUI();
+
+      // Sincronizza anche su Drive: così il requisito "serve l'email" vale per il vault
+      // ovunque venga ripristinato, non solo su questo dispositivo.
+      if (driveClient && driveClient.isAuthenticated()) {
+        try {
+          await driveClient.saveOtpConfigFile(config);
+          UI.showToast("Configurazione sincronizzata anche su Google Drive", "success");
+        } catch (err) {
+          console.error(err);
+          UI.showToast("Salvata localmente, ma la sincronizzazione su Drive non è riuscita", "warning");
+        }
+      }
     });
   }
 
@@ -664,9 +743,17 @@ function setupEventListeners() {
         UI.showToast("Nessun vault locale trovato", "error");
         return;
       }
+      const localBlob = base64ToArrayBuffer(localVaultData);
+      let secretKeyRaw = null;
+      try {
+        secretKeyRaw = getSecretKeyRawForBlob(localBlob);
+      } catch (e) {
+        UI.showToast(e.message, "error");
+        return;
+      }
       try {
         const verifyVault = new Vault();
-        await verifyVault.unlock(current, base64ToArrayBuffer(localVaultData));
+        await verifyVault.unlock(current, localBlob, secretKeyRaw);
       } catch (e) {
         UI.showToast("La password attuale non è corretta", "error");
         return;
@@ -683,7 +770,7 @@ function setupEventListeners() {
 
       try {
         UI.showToast("Cambio password in corso...", "info");
-        await appVault.changeMasterPassword(current, newPwd);
+        await appVault.changeMasterPassword(current, newPwd, secretKeyRaw);
         appPassword = newPwd;
         TwoFactor.markFullPasswordAuth();
         
@@ -708,6 +795,7 @@ function setupEventListeners() {
       try {
         await driveClient.authenticate();
         UI.showToast("Google Drive connesso", "success");
+        await adoptRemoteOtpConfigIfPresent();
         await syncFromDrive(true);
       } catch (err) {
         console.error(err);
@@ -730,6 +818,17 @@ function setupEventListeners() {
           await driveClient.authenticate();
           UI.showToast("Connesso a Drive", "success");
           btnSettingsDriveToggle.textContent = 'Disconnetti';
+
+          // Se su Drive c'è già una configurazione OTP la adottiamo qui; altrimenti, se questo
+          // dispositivo ne ha già una configurata localmente, la carichiamo su Drive.
+          const remoteOtpFile = await driveClient.findOtpConfigFile().catch(() => null);
+          if (remoteOtpFile) {
+            await adoptRemoteOtpConfigIfPresent();
+            UI.updateEmailOtpSettingsUI();
+          } else if (EmailOTP.isEmailOtpConfigured()) {
+            driveClient.saveOtpConfigFile(EmailOTP.getConfig()).catch((err) => console.warn("Impossibile caricare la configurazione OTP su Drive:", err));
+          }
+
           syncFromDrive();
         } catch (e) {
           console.error(e);
@@ -811,6 +910,7 @@ function setupEventListeners() {
 
       // Esegue il reset
       localStorage.removeItem(LOCAL_STORAGE_KEY);
+      localStorage.removeItem(SECRET_KEY_STORAGE_KEY); // legata alla vecchia vaultKey, non ha più senso
       TwoFactor.clearAllSecondFactors(); // le registrazioni 2FA proteggono la vecchia vaultKey
       appVault = new Vault();
       appPassword = null;
@@ -828,6 +928,115 @@ function setupEventListeners() {
       if (catName && catName.trim()) {
         appVault.addCategory(catName.trim());
         document.dispatchEvent(new CustomEvent('vault-updated'));
+      }
+    });
+  }
+
+  // --- Secret Key (2SKD) ---
+  let pending2SKDPacked = null; // blob generato ma non ancora persistito, in attesa di conferma
+  let pending2SKDSecretKey = null;
+  let pending2SKDPreviousEnvelope = null; // per poter annullare senza lasciare lo stato inconsistente
+
+  const btnEnable2SKD = document.getElementById('btn-enable-2skd');
+  if (btnEnable2SKD) {
+    btnEnable2SKD.addEventListener('click', async () => {
+      if (!appVault.isUnlocked()) {
+        UI.showToast("Il vault deve essere sbloccato", "error");
+        return;
+      }
+      if (appVault.isTwoSecretKeyDerivationEnabled()) {
+        UI.showToast("La protezione Secret Key è già attiva su questo vault", "info");
+        return;
+      }
+      const current = prompt("Per attivare questa protezione, conferma la password principale attuale:");
+      if (!current) return;
+
+      // Verifica la password prima di generare qualunque cosa
+      const localVaultData = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (!localVaultData) {
+        UI.showToast("Nessun vault locale trovato", "error");
+        return;
+      }
+      try {
+        const verifyVault = new Vault();
+        await verifyVault.unlock(current, base64ToArrayBuffer(localVaultData));
+      } catch (e) {
+        UI.showToast("Password non corretta", "error");
+        return;
+      }
+
+      try {
+        pending2SKDPreviousEnvelope = appVault.envelope;
+        const { packed, secretKeyFormatted } = await appVault.enableTwoSecretKeyDerivation(current);
+        pending2SKDPacked = packed;
+        pending2SKDSecretKey = secretKeyFormatted;
+
+        document.getElementById('secret-key-display').textContent = secretKeyFormatted;
+        document.getElementById('secret-key-confirm-checkbox').checked = false;
+        document.getElementById('btn-secret-key-confirm').disabled = true;
+        document.getElementById('modal-2skd-reveal').classList.remove('hidden');
+      } catch (err) {
+        console.error(err);
+        UI.showToast("Impossibile attivare la protezione", "error");
+      }
+    });
+  }
+
+  const secretKeyCheckbox = document.getElementById('secret-key-confirm-checkbox');
+  const btnSecretKeyConfirm = document.getElementById('btn-secret-key-confirm');
+  if (secretKeyCheckbox && btnSecretKeyConfirm) {
+    secretKeyCheckbox.addEventListener('change', () => {
+      btnSecretKeyConfirm.disabled = !secretKeyCheckbox.checked;
+    });
+
+    btnSecretKeyConfirm.addEventListener('click', async () => {
+      if (!pending2SKDPacked || !pending2SKDSecretKey) return;
+
+      // SOLO ora, dopo la conferma esplicita, si persiste davvero: prima la Secret Key non è
+      // salvata da nessuna parte fuori da questa finestra, per evitare di attivare una
+      // protezione la cui chiave l'utente non ha ancora effettivamente messo al sicuro.
+      // L'envelope del vault in memoria è già quello nuovo (2SKD): saveAndSync() lo salva sia
+      // in locale sia su Drive, riusando la stessa logica del salvataggio normale.
+      localStorage.setItem(SECRET_KEY_STORAGE_KEY, pending2SKDSecretKey);
+      await saveAndSync();
+
+      document.getElementById('modal-2skd-reveal').classList.add('hidden');
+      document.getElementById('settings-2skd-status').textContent = 'Attiva';
+      if (btnEnable2SKD) btnEnable2SKD.disabled = true;
+
+      pending2SKDPacked = null;
+      pending2SKDSecretKey = null;
+      pending2SKDPreviousEnvelope = null;
+
+      UI.showToast("Protezione Secret Key attivata", "success");
+    });
+  }
+
+  // Se il modal viene chiuso SENZA confermare (X, click fuori), annulla tutto: la mutazione
+  // in memoria dell'envelope va disfatta, e nulla va persistito.
+  const modal2SKD = document.getElementById('modal-2skd-reveal');
+  if (modal2SKD) {
+    modal2SKD.addEventListener('click', (e) => {
+      const isCloseAction = e.target.closest('.btn-close-modal') || e.target.classList.contains('modal-backdrop');
+      if (isCloseAction && pending2SKDPacked) {
+        appVault.envelope = pending2SKDPreviousEnvelope;
+        pending2SKDPacked = null;
+        pending2SKDSecretKey = null;
+        pending2SKDPreviousEnvelope = null;
+        UI.showToast("Attivazione annullata", "info");
+      }
+    });
+  }
+
+  const btnCopySecretKey = document.getElementById('btn-copy-secret-key');
+  if (btnCopySecretKey) {
+    btnCopySecretKey.addEventListener('click', async () => {
+      const text = document.getElementById('secret-key-display').textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        UI.showToast("Secret Key copiata", "success");
+      } catch (e) {
+        UI.showToast("Impossibile copiare automaticamente, seleziona e copia manualmente", "warning");
       }
     });
   }
@@ -964,6 +1173,11 @@ function setupEventListeners() {
         UI.showToast("Connessione a Google Drive in corso...", "info");
         await driveClient.authenticate();
         UI.showToast("Connesso a Google Drive", "success");
+
+        // Adotta subito un'eventuale configurazione OTP salvata su Drive: se presente, anche
+        // su QUESTO dispositivo (che magari non ha mai avuto biometria/TOTP/email configurati)
+        // la password da sola non basterà più per entrare.
+        await adoptRemoteOtpConfigIfPresent();
         
         // Cerca il file del vault su Drive
         const file = await driveClient.findVaultFile();
@@ -975,16 +1189,11 @@ function setupEventListeners() {
           if (pwd) {
             UI.showScreen('screen-loading');
             try {
-              await appVault.unlock(pwd, remoteData);
-              appPassword = pwd;
-              TwoFactor.markFullPasswordAuth();
-              localStorage.setItem(LOCAL_STORAGE_KEY, arrayBufferToBase64(remoteData));
-              
-              UI.showToast("Vault scaricato e sbloccato con successo!", "success");
-              UI.showScreen('screen-dashboard');
-              UI.renderItemList(appVault.getAllItems());
-              UI.renderCategories(appVault.getCategories(), null);
-              UI.resetAutoLockTimer();
+              // Verifica la password ed eventualmente avvia la verifica aggiuntiva (se il
+              // vault la richiede, localmente o secondo la configurazione appena scaricata da
+              // Drive), SENZA decifrare subito il contenuto. persistLocally=true: una volta
+              // completata la verifica, il blob va salvato anche in questo browser.
+              await unlockBlobWithPasswordAndVerification(pwd, remoteData, true);
             } catch (err) {
               console.error(err);
               UI.showToast("Password errata o file non valido", "error");
@@ -1016,17 +1225,12 @@ async function syncFromDrive(forceUnlockPrompt = false) {
         const pwd = prompt("Inserisci la password principale per il vault di Drive:");
         if (pwd) {
           try {
-            await appVault.unlock(pwd, remoteData);
-            appPassword = pwd;
-            TwoFactor.markFullPasswordAuth();
-            localStorage.setItem(LOCAL_STORAGE_KEY, arrayBufferToBase64(remoteData));
-            
-            UI.showToast("Vault sincronizzato da Drive e sbloccato", "success");
-            UI.showScreen('screen-dashboard');
-            UI.renderItemList(appVault.getAllItems());
-            UI.renderCategories(appVault.getCategories(), null);
-            UI.resetAutoLockTimer();
+            // Stessa protezione del login normale: se serve una verifica aggiuntiva (locale o
+            // secondo la configurazione appena scaricata da Drive), la password da sola non
+            // porta subito alla dashboard (mostra invece la schermata di verifica extra).
+            await unlockBlobWithPasswordAndVerification(pwd, remoteData, true);
           } catch(e) {
+            console.error(e);
             UI.showToast("Password errata", "error");
           }
         }

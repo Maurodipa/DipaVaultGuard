@@ -179,4 +179,73 @@ export class GoogleDriveClient {
   getLastSyncTime() {
     return this.lastSyncTime;
   }
+
+  // --- File di configurazione OTP via email ---
+  // Piccolo file JSON NON cifrato in appDataFolder (separato dal vault vero e proprio), usato
+  // per rendere il requisito "serve l'OTP via email" una proprietà del vault stesso, non solo
+  // di questo dispositivo. Senza questo, ripristinare il vault su un dispositivo/browser dove
+  // non è mai stata configurata la biometria/TOTP/email permetterebbe di entrare con la sola
+  // password, perché localmente non ci sarebbe nulla da controllare.
+  // Contiene Service ID/Template ID/Public Key di EmailJS e l'email destinatario: valori
+  // pensati per essere lato client nel modello di EmailJS (non sono segreti come una password),
+  // ma chiunque avesse accesso al tuo Google Drive potrebbe comunque vederli.
+  async findOtpConfigFile(fileName = 'dipavault-otp-config.json') {
+    if (!this.accessToken) throw new Error("Non autenticato");
+
+    const query = encodeURIComponent(`name='${fileName}' and 'appDataFolder' in parents and trashed=false`);
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&spaces=appDataFolder&fields=files(id,name,modifiedTime)`, {
+      headers: { Authorization: `Bearer ${this.accessToken}` }
+    });
+
+    if (!response.ok) throw new Error("Errore durante la ricerca della configurazione OTP su Drive");
+
+    const data = await response.json();
+    if (data.files && data.files.length > 0) {
+      return data.files[0];
+    }
+    return null;
+  }
+
+  async readOtpConfigFile(fileId) {
+    if (!this.accessToken) throw new Error("Non autenticato");
+
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+      headers: { Authorization: `Bearer ${this.accessToken}` }
+    });
+
+    if (!response.ok) throw new Error("Errore durante la lettura della configurazione OTP su Drive");
+
+    return await response.json();
+  }
+
+  // Crea o aggiorna il file, a seconda che esista già o meno.
+  async saveOtpConfigFile(config, fileName = 'dipavault-otp-config.json') {
+    if (!this.accessToken) throw new Error("Non autenticato");
+
+    const existing = await this.findOtpConfigFile(fileName);
+    const body = JSON.stringify(config);
+
+    if (existing) {
+      const response = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=media&fields=id,name,modifiedTime`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${this.accessToken}`, 'Content-Type': 'application/json' },
+        body
+      });
+      if (!response.ok) throw new Error("Errore durante l'aggiornamento della configurazione OTP su Drive");
+      return await response.json();
+    }
+
+    const metadata = { name: fileName, parents: ['appDataFolder'] };
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', new Blob([body], { type: 'application/json' }));
+
+    const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,modifiedTime', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+      body: form
+    });
+    if (!response.ok) throw new Error("Errore durante la creazione della configurazione OTP su Drive");
+    return await response.json();
+  }
 }

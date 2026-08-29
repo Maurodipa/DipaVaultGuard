@@ -638,6 +638,12 @@ export function openSettings() {
   });
   updateEmailOtpSettingsUI();
 
+  const twoSkdStatus = document.getElementById('settings-2skd-status');
+  const btnEnable2SKDEl = document.getElementById('btn-enable-2skd');
+  const twoSkdActive = appVault && typeof appVault.isTwoSecretKeyDerivationEnabled === 'function' && appVault.isTwoSecretKeyDerivationEnabled();
+  if (twoSkdStatus) twoSkdStatus.textContent = twoSkdActive ? 'Attiva' : 'Non attiva';
+  if (btnEnable2SKDEl) btnEnable2SKDEl.disabled = !!twoSkdActive;
+
   modal.classList.remove('hidden');
 }
 

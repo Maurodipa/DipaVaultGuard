@@ -607,6 +607,18 @@
                 </section>
 
                 <section class="settings-section">
+                    <h3>Secret Key (2SKD)</h3>
+                    <p class="text-xs text-muted mb-2">Protezione crittografica avanzata: la chiave del vault viene derivata combinando la password E una Secret Key locale ad alta entropia, mai sincronizzata su Drive. Anche conoscendo la password, senza la Secret Key non si decifra nulla. <strong>Attenzione: se perdi la Secret Key, perdi l'accesso al vault per sempre, anche con la password corretta.</strong></p>
+                    <div class="setting-row">
+                        <div class="setting-info">
+                            <span class="setting-title">Two-Secret Key Derivation</span>
+                            <span class="setting-desc" id="settings-2skd-status">Non attiva</span>
+                        </div>
+                        <button class="btn btn-secondary btn-sm" id="btn-enable-2skd">Attiva</button>
+                    </div>
+                </section>
+
+                <section class="settings-section">
                     <h3>Autenticazione a due fattori (2FA)</h3>
                     <p class="text-xs text-muted mb-2">Con il 2FA attivo, la sola password principale non basta più ad aprire l'app: serve anche l'impronta/volto oppure un codice generato da un'app authenticator. Ogni 7 giorni verrà comunque richiesta la password completa.</p>
 
@@ -713,6 +725,34 @@
                     </div>
                     <button type="submit" class="btn btn-primary btn-block">Conferma e attiva</button>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Rivela Secret Key (2SKD) -->
+    <div id="modal-2skd-reveal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>La tua Secret Key</h2>
+                <button class="btn-icon btn-close-modal"><svg class="icon"><use href="#icon-close"></use></svg></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger mb-4">
+                    <strong>Salvala ORA, in un posto sicuro e diverso da questo dispositivo</strong> (es. scritta a mano, stampata, in un altro gestore password). Non verrà mai più mostrata, e non viene mai sincronizzata su Google Drive. Se la perdi, insieme alla password, <strong>perdi l'accesso al vault per sempre</strong>, senza possibilità di recupero.
+                </div>
+                <div class="copy-field mb-4">
+                    <span class="detail-value obfuscated" id="secret-key-display" style="font-size:1.1rem; letter-spacing:1px;">----</span>
+                    <button type="button" class="btn-icon" id="btn-copy-secret-key" title="Copia Secret Key">
+                        <svg class="icon"><use href="#icon-copy"></use></svg>
+                    </button>
+                </div>
+                <label class="checkbox-label mb-4">
+                    <input type="checkbox" id="secret-key-confirm-checkbox">
+                    Ho salvato la Secret Key in un posto sicuro e capisco che senza di essa non potrò più accedere al vault, nemmeno con la password corretta.
+                </label>
+                <button type="button" id="btn-secret-key-confirm" class="btn btn-primary btn-block" disabled>Ho salvato, attiva la protezione</button>
+                <p class="text-xs text-muted text-center mt-2">Chiudendo questa finestra senza confermare, la protezione NON verrà attivata.</p>
             </div>
         </div>
     </div>

@@ -1,14 +1,18 @@
-import { packVault, unpackVault, unpackVaultWithKey, repackVaultData, wipeBuffer, unwrapVaultKeyWithPassword } from './crypto_Claude_2FA.js';
+import { packVault, packVault2SKD, unpackVault, unpackVaultWithKey, repackVaultData, wipeBuffer, unwrapVaultKeyWithPassword, generateSecretKeyRaw, formatSecretKey, isSecretKeyRequired, parseSecretKey } from './crypto_Claude_2FA.js';
 
-// Verifica SOLO che la password sia corretta e restituisce la vaultKey grezza, SENZA
-// decifrare né esporre il contenuto del vault (items/categorie restano cifrati). Pensata per
-// i casi in cui serve confermare la password prima di una verifica aggiuntiva (2FA): se quella
-// fallisce, il contenuto del vault non sarà mai esistito in chiaro in questa sessione.
+export { isSecretKeyRequired, parseSecretKey } from './crypto_Claude_2FA.js';
+
+// Verifica SOLO che la password (ed eventualmente la Secret Key, se il vault la richiede) sia
+// corretta e restituisce la vaultKey grezza, SENZA decifrare né esporre il contenuto del vault
+// (items/categorie restano cifrati). Pensata per i casi in cui serve confermare le credenziali
+// prima di una verifica aggiuntiva (2FA): se quella fallisce, il contenuto del vault non sarà
+// mai esistito in chiaro in questa sessione.
 // Non è un metodo della classe Vault perché non modifica né richiede lo stato di un'istanza.
-export async function verifyPasswordAndGetVaultKey(password, packedData) {
+export async function verifyPasswordAndGetVaultKey(password, packedData, secretKeyRaw = null) {
   try {
-    return await unwrapVaultKeyWithPassword(password, packedData);
+    return await unwrapVaultKeyWithPassword(password, packedData, secretKeyRaw);
   } catch (e) {
+    if (e.message === 'SECRET_KEY_REQUIRED') throw e; // non "nascondere" questo caso dietro "password errata"
     throw new Error("Password errata o dati corrotti");
   }
 }
@@ -18,7 +22,7 @@ export class Vault {
     this.items = {};
     this.categories = [];
     this.vaultKeyRaw = null;
-    this.envelope = null; // { salt, ivKey, encryptedVaultKey } - l'involucro protetto dalla password
+    this.envelope = null; // { salt, ivKey, encryptedVaultKey, magic } - l'involucro protetto dalla password (ed eventualmente dalla Secret Key)
     this.unlocked = false;
     this.lastUpdated = null;
   }
@@ -35,9 +39,9 @@ export class Vault {
     return packed;
   }
 
-  async unlock(masterPassword, encryptedData) {
+  async unlock(masterPassword, encryptedData, secretKeyRaw = null) {
     try {
-      const { vaultJson, vaultKeyRaw, envelope } = await unpackVault(masterPassword, encryptedData);
+      const { vaultJson, vaultKeyRaw, envelope } = await unpackVault(masterPassword, encryptedData, secretKeyRaw);
       const parsed = JSON.parse(vaultJson);
       this.items = parsed.items || {};
       this.categories = parsed.categories || [];
@@ -47,6 +51,7 @@ export class Vault {
       this.unlocked = true;
       return true;
     } catch (e) {
+      if (e.message === 'SECRET_KEY_REQUIRED') throw e;
       throw new Error("Password errata o dati corrotti");
     }
   }
@@ -82,6 +87,11 @@ export class Vault {
 
   isUnlocked() {
     return this.unlocked;
+  }
+
+  // Vero se il vault attualmente sbloccato usa la protezione 2SKD (password + Secret Key).
+  isTwoSecretKeyDerivationEnabled() {
+    return !!(this.envelope && this.envelope.magic);
   }
 
   addItem(itemData) {
@@ -213,13 +223,42 @@ export class Vault {
   // Cambia la password principale. Riusa la vaultKey esistente (non ne genera una nuova):
   // questo evita di dover ri-cifrare tutti i dati e, soprattutto, mantiene valide le eventuali
   // registrazioni biometriche/TOTP già effettuate (che proteggono una copia della vaultKey).
-  async changeMasterPassword(currentPassword, newPassword) {
+  // Se il vault usa la protezione 2SKD, va fornita anche la Secret Key corrente (la Secret Key
+  // stessa NON cambia con la password, esattamente come in 1Password).
+  async changeMasterPassword(currentPassword, newPassword, secretKeyRaw = null) {
     if (!this.unlocked || !this.vaultKeyRaw) throw new Error("Vault is locked");
     const vaultJson = JSON.stringify({ items: this.items, categories: this.categories, lastUpdated: this.lastUpdated });
-    const { packed, vaultKeyRaw, envelope } = await packVault(newPassword, vaultJson, this.vaultKeyRaw);
+
+    let result;
+    if (this.isTwoSecretKeyDerivationEnabled()) {
+      if (!secretKeyRaw) throw new Error("SECRET_KEY_REQUIRED");
+      result = await packVault2SKD(newPassword, secretKeyRaw, vaultJson, this.vaultKeyRaw);
+    } else {
+      result = await packVault(newPassword, vaultJson, this.vaultKeyRaw);
+    }
+
+    this.vaultKeyRaw = result.vaultKeyRaw;
+    this.envelope = result.envelope;
+    return result.packed;
+  }
+
+  // Attiva la protezione 2SKD (Two-Secret Key Derivation) su un vault che finora ne era privo:
+  // genera una nuova Secret Key ad alta entropia e ri-avvolge la vaultKey ESISTENTE (quindi
+  // biometria/TOTP già configurati restano validi) usando password + Secret Key combinate.
+  // Richiede la password corrente per riconferma, come per il cambio password.
+  // Restituisce sia il blob da salvare, sia la Secret Key formattata da mostrare UNA VOLTA
+  // SOLA all'utente: non viene mai salvata dall'app stessa fuori da questo dispositivo.
+  async enableTwoSecretKeyDerivation(currentPassword) {
+    if (!this.unlocked || !this.vaultKeyRaw) throw new Error("Vault is locked");
+    const vaultJson = JSON.stringify({ items: this.items, categories: this.categories, lastUpdated: this.lastUpdated });
+
+    const secretKeyRaw = generateSecretKeyRaw();
+    const { packed, vaultKeyRaw, envelope } = await packVault2SKD(currentPassword, secretKeyRaw, vaultJson, this.vaultKeyRaw);
+
     this.vaultKeyRaw = vaultKeyRaw;
     this.envelope = envelope;
-    return packed;
+
+    return { packed, secretKeyFormatted: formatSecretKey(secretKeyRaw) };
   }
 
   getStats() {
