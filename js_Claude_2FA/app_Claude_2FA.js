@@ -177,13 +177,70 @@ function requiresExtraVerification() {
 }
 
 // Recupera la Secret Key necessaria per sbloccare un blob 2SKD: se è già stata salvata su
-// questo dispositivo la riusa senza chiedere nulla; altrimenti la richiede all'utente (una
-// tantum per dispositivo) e la salva per le volte successive. Restituisce null se il blob non
-// richiede affatto la Secret Key (formato v1, il caso comune).
-function getSecretKeyRawForBlob(blob) {
+// Legge la Secret Key salvata su questo dispositivo, se presente. Riconosce sia il vecchio
+// formato in chiaro (stringa semplice) sia quello nuovo cifrato con la biometria (oggetto
+// JSON {encrypted:true, iv, wrapped}), per restare compatibile con quanto già salvato in
+// precedenza. Se è cifrata, chiede la verifica biometrica per decifrarla.
+async function readCachedSecretKeyString() {
+  const raw = localStorage.getItem(SECRET_KEY_STORAGE_KEY);
+  if (!raw) return null;
+
+  let parsed = null;
+  try { parsed = JSON.parse(raw); } catch (e) { /* non è JSON: formato legacy in chiaro */ }
+
+  if (parsed && parsed.encrypted) {
+    if (!TwoFactor.isBiometricRegistered()) {
+      throw new Error("La Secret Key salvata è protetta dalla biometria, ma la biometria non risulta configurata su questo dispositivo.");
+    }
+    return await TwoFactor.decryptSecretKeyWithBiometric(parsed);
+  }
+
+  return raw; // formato legacy: stringa in chiaro
+}
+
+// Salva la Secret Key su questo dispositivo. Se la biometria è già configurata qui, la cifra
+// prima di salvarla (così un accesso diretto a localStorage non basta a leggerla); altrimenti
+// la salva in chiaro come prima, dato che non c'è un modo sicuro alternativo di proteggerla
+// localmente senza un fattore biometrico.
+async function cacheSecretKeyLocally(secretKeyFormatted) {
+  if (TwoFactor.isBiometricRegistered()) {
+    try {
+      const record = await TwoFactor.encryptSecretKeyWithBiometric(secretKeyFormatted);
+      localStorage.setItem(SECRET_KEY_STORAGE_KEY, JSON.stringify({ encrypted: true, ...record }));
+      return;
+    } catch (e) {
+      console.warn("Impossibile cifrare la Secret Key con la biometria, la salvo in chiaro:", e);
+    }
+  }
+  localStorage.setItem(SECRET_KEY_STORAGE_KEY, secretKeyFormatted);
+}
+
+// Se sul dispositivo è già salvata una Secret Key in chiaro (formato legacy, da prima che la
+// biometria fosse configurata), e la biometria è appena diventata disponibile, la ricifra
+// automaticamente. Non fa nulla se non c'è alcuna Secret Key salvata, o se è già cifrata.
+async function upgradePlaintextSecretKeyToEncrypted() {
+  const raw = localStorage.getItem(SECRET_KEY_STORAGE_KEY);
+  if (!raw) return;
+  try {
+    JSON.parse(raw);
+    return; // è già in formato JSON cifrato, niente da fare
+  } catch (e) {
+    // non è JSON: è la stringa in chiaro legacy, procediamo a cifrarla
+  }
+  try {
+    await cacheSecretKeyLocally(raw);
+  } catch (e) {
+    console.warn("Impossibile mettere in sicurezza la Secret Key già salvata:", e);
+  }
+}
+
+// Recupera (o richiede all'utente, una tantum per dispositivo) la Secret Key necessaria per
+// sbloccare un blob 2SKD. Restituisce null se il blob non richiede affatto la Secret Key
+// (formato v1, il caso comune).
+async function getSecretKeyRawForBlob(blob) {
   if (!isSecretKeyRequired(blob)) return null;
 
-  const cached = localStorage.getItem(SECRET_KEY_STORAGE_KEY);
+  const cached = await readCachedSecretKeyString();
   if (cached) return parseSecretKey(cached);
 
   const entered = prompt("Questo vault richiede anche la Secret Key (oltre alla password) — l'hai salvata quando hai attivato la protezione 2SKD:");
@@ -191,7 +248,7 @@ function getSecretKeyRawForBlob(blob) {
     throw new Error("Secret Key necessaria per sbloccare questo vault.");
   }
   const trimmed = entered.trim();
-  localStorage.setItem(SECRET_KEY_STORAGE_KEY, trimmed);
+  await cacheSecretKeyLocally(trimmed);
   return parseSecretKey(trimmed);
 }
 
@@ -200,7 +257,7 @@ function getSecretKeyRawForBlob(blob) {
 // Se `persistLocally` è vero, il blob verrà salvato anche in localStorage una volta completata
 // (o immediatamente, se non serve alcuna verifica extra) — usato per il ripristino da Drive.
 async function unlockBlobWithPasswordAndVerification(pwd, blob, persistLocally = false) {
-  const secretKeyRaw = getSecretKeyRawForBlob(blob); // null se il blob non è 2SKD
+  const secretKeyRaw = await getSecretKeyRawForBlob(blob); // null se il blob non è 2SKD
 
   if (requiresExtraVerification()) {
     const vaultKeyRaw = await verifyPasswordAndGetVaultKey(pwd, blob, secretKeyRaw);
@@ -746,7 +803,7 @@ function setupEventListeners() {
       const localBlob = base64ToArrayBuffer(localVaultData);
       let secretKeyRaw = null;
       try {
-        secretKeyRaw = getSecretKeyRawForBlob(localBlob);
+        secretKeyRaw = await getSecretKeyRawForBlob(localBlob);
       } catch (e) {
         UI.showToast(e.message, "error");
         return;
@@ -995,9 +1052,11 @@ function setupEventListeners() {
       // SOLO ora, dopo la conferma esplicita, si persiste davvero: prima la Secret Key non è
       // salvata da nessuna parte fuori da questa finestra, per evitare di attivare una
       // protezione la cui chiave l'utente non ha ancora effettivamente messo al sicuro.
+      // Se la biometria è già configurata su questo dispositivo, la Secret Key viene cifrata
+      // prima di essere salvata (potrebbe chiedere l'impronta/volto proprio ora).
       // L'envelope del vault in memoria è già quello nuovo (2SKD): saveAndSync() lo salva sia
       // in locale sia su Drive, riusando la stessa logica del salvataggio normale.
-      localStorage.setItem(SECRET_KEY_STORAGE_KEY, pending2SKDSecretKey);
+      await cacheSecretKeyLocally(pending2SKDSecretKey);
       await saveAndSync();
 
       document.getElementById('modal-2skd-reveal').classList.add('hidden');
@@ -1053,6 +1112,7 @@ function setupEventListeners() {
         UI.showToast("Segui le istruzioni del dispositivo per la verifica biometrica...", "info");
         await TwoFactor.registerBiometric(appVault.vaultKeyRaw);
         TwoFactor.markFullPasswordAuth();
+        await upgradePlaintextSecretKeyToEncrypted();
         UI.showToast("Sblocco biometrico abilitato", "success");
         UI.updateSecuritySettingsUI({
           biometricEnabled: TwoFactor.isBiometricRegistered(),

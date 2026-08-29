@@ -31,6 +31,11 @@ const MAX_DAYS_WITHOUT_PASSWORD = 7;
 const RP_NAME = 'DipaVaultGuard';
 // Salt fisso per la valutazione PRF: serve solo a separare il contesto d'uso, non è un segreto.
 const PRF_SALT = new TextEncoder().encode('dipavaultguard-prf-salt-v1');
+// Salt PRF distinto, usato SOLO per cifrare la Secret Key del 2SKD in localStorage — mai per
+// la vaultKey. Riusa la STESSA credenziale biometrica già registrata (nessuna nuova
+// registrazione richiesta), ma con un salt diverso il valore PRF ottenuto è completamente
+// diverso e indipendente da quello usato per la vaultKey (proprietà standard delle PRF).
+const PRF_SALT_SECRET_KEY = new TextEncoder().encode('dipavaultguard-prf-salt-secretkey-v1');
 
 // ---------------------------------------------------------------------------
 // Tracciamento "richiedi password completa ogni tot giorni"
@@ -166,13 +171,13 @@ export async function registerBiometric(vaultKeyRaw) {
   return true;
 }
 
-async function evalPrfWithAssertion(credentialRawId) {
+async function evalPrfWithAssertion(credentialRawId, salt = PRF_SALT) {
   const assertion = await navigator.credentials.get({
     publicKey: {
       challenge: crypto.getRandomValues(new Uint8Array(32)),
       allowCredentials: [{ id: credentialRawId, type: 'public-key' }],
       userVerification: 'required',
-      extensions: { prf: { eval: { first: PRF_SALT } } }
+      extensions: { prf: { eval: { first: salt } } }
     }
   });
   if (!assertion) return null;
@@ -201,6 +206,57 @@ export async function unlockWithBiometric() {
     base64ToBuffer(record.wrapped)
   );
   return vaultKeyRaw;
+}
+
+// ---------------------------------------------------------------------------
+// Cifratura della Secret Key (2SKD) tramite biometria
+// ---------------------------------------------------------------------------
+// La Secret Key va comunque tenuta in locale per non doverla ridigitare a ogni sblocco, ma
+// non c'è motivo che sieda in localStorage in chiaro se questo dispositivo ha già una
+// credenziale biometrica: la cifriamo con una chiave derivata dallo stesso meccanismo PRF
+// usato per la vaultKey (stessa credenziale, salt diverso), così un accesso diretto a
+// localStorage (es. DevTools) non basta più a leggerla: serve anche il sensore biometrico.
+
+export async function isBiometricEncryptionAvailable() {
+  return isBiometricRegistered();
+}
+
+// Cifra la stringa della Secret Key. Richiede che la biometria sia già registrata su questo
+// dispositivo (altrimenti lancia un errore: il chiamante dovrebbe salvarla in chiaro come
+// ripiego in quel caso). Chiede una verifica biometrica per calcolare la chiave di cifratura.
+export async function encryptSecretKeyWithBiometric(secretKeyFormatted) {
+  const recordRaw = localStorage.getItem(BIOMETRIC_KEY);
+  if (!recordRaw) throw new Error('Biometria non configurata su questo dispositivo.');
+  const record = JSON.parse(recordRaw);
+
+  const credentialId = base64ToBuffer(record.credentialId);
+  const prfBits = await evalPrfWithAssertion(credentialId, PRF_SALT_SECRET_KEY);
+  if (!prfBits) throw new Error('Verifica biometrica non riuscita o annullata.');
+
+  const wrappingKeyRaw = await hkdfDeriveBits(prfBits, 'dipavaultguard-secretkey-wrap');
+  const { iv, ciphertext } = await aesEncryptRaw(wrappingKeyRaw, new TextEncoder().encode(secretKeyFormatted));
+
+  return { iv: bufferToBase64(iv), wrapped: bufferToBase64(ciphertext) };
+}
+
+// Decifra un record { iv, wrapped } prodotto da encryptSecretKeyWithBiometric, chiedendo di
+// nuovo la verifica biometrica per ricostruire la stessa chiave.
+export async function decryptSecretKeyWithBiometric(encryptedRecord) {
+  const recordRaw = localStorage.getItem(BIOMETRIC_KEY);
+  if (!recordRaw) throw new Error('Biometria non configurata su questo dispositivo: impossibile decifrare la Secret Key salvata.');
+  const record = JSON.parse(recordRaw);
+
+  const credentialId = base64ToBuffer(record.credentialId);
+  const prfBits = await evalPrfWithAssertion(credentialId, PRF_SALT_SECRET_KEY);
+  if (!prfBits) throw new Error('Verifica biometrica non riuscita o annullata.');
+
+  const wrappingKeyRaw = await hkdfDeriveBits(prfBits, 'dipavaultguard-secretkey-wrap');
+  const plaintext = await aesDecryptRaw(
+    wrappingKeyRaw,
+    base64ToBuffer(encryptedRecord.iv),
+    base64ToBuffer(encryptedRecord.wrapped)
+  );
+  return new TextDecoder().decode(plaintext);
 }
 
 // ---------------------------------------------------------------------------
