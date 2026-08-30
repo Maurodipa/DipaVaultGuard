@@ -192,6 +192,7 @@ async function readCachedSecretKeyString() {
     if (!TwoFactor.isBiometricRegistered()) {
       throw new Error("La Secret Key salvata è protetta dalla biometria, ma la biometria non risulta configurata su questo dispositivo.");
     }
+    UI.showToast("Conferma l'impronta/volto per recuperare la Secret Key salvata...", "info");
     return await TwoFactor.decryptSecretKeyWithBiometric(parsed);
   }
 
@@ -539,7 +540,15 @@ function setupEventListeners() {
         await unlockBlobWithPasswordAndVerification(pwd, encryptedBlob, false);
       } catch (err) {
         console.error(err);
-        errorDiv.textContent = "Password principale errata";
+        if (err.message === 'SECRET_KEY_REQUIRED') {
+          errorDiv.textContent = "Questo vault richiede anche la Secret Key. Riprova e inseriscila quando richiesta.";
+        } else if (err.message && (err.message.includes('biometric') || err.message.includes('biometrica') || err.message.includes('Verifica biometrica'))) {
+          errorDiv.textContent = "Verifica biometrica per la Secret Key non riuscita. Riprova, oppure controlla che l'impronta/volto sia riconosciuto correttamente.";
+        } else if (err.message === 'Password errata o dati corrotti') {
+          errorDiv.textContent = "Password principale errata";
+        } else {
+          errorDiv.textContent = err.message || "Password principale errata";
+        }
         errorDiv.classList.remove('hidden');
         UI.showScreen('screen-login');
       }
@@ -1256,7 +1265,7 @@ function setupEventListeners() {
               await unlockBlobWithPasswordAndVerification(pwd, remoteData, true);
             } catch (err) {
               console.error(err);
-              UI.showToast("Password errata o file non valido", "error");
+              UI.showToast(err.message || "Password errata o file non valido", "error");
               UI.showScreen('screen-setup');
             }
           }
@@ -1291,7 +1300,7 @@ async function syncFromDrive(forceUnlockPrompt = false) {
             await unlockBlobWithPasswordAndVerification(pwd, remoteData, true);
           } catch(e) {
             console.error(e);
-            UI.showToast("Password errata", "error");
+            UI.showToast(e.message || "Password errata", "error");
           }
         }
       } else if (appVault.isUnlocked()) {
