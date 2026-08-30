@@ -267,8 +267,15 @@
                 <button type="submit" class="btn btn-primary btn-block">Verifica e sblocca</button>
             </form>
 
+            <!-- Modalità biometrica: nessun codice da digitare, un solo tap avvia la richiesta di impronta/volto -->
+            <button type="button" id="btn-otp-verify-biometric" class="btn btn-primary btn-block hidden">
+                <svg class="icon mr-2"><use href="#icon-fingerprint"></use></svg>
+                Verifica con impronta/volto
+            </button>
+
             <button type="button" id="btn-otp-resend" class="btn btn-text btn-block text-sm mt-2 hidden">Invia di nuovo il codice</button>
             <button type="button" id="otp-use-totp-instead" class="btn btn-text btn-block text-sm mt-1 hidden">Usa invece il codice dell'app authenticator</button>
+            <button type="button" id="otp-use-biometric-instead" class="btn btn-text btn-block text-sm mt-1 hidden">Usa invece impronta/volto</button>
             <button type="button" id="btn-otp-cancel" class="btn btn-secondary btn-block mt-3">Annulla</button>
         </div>
     </section>

@@ -304,34 +304,43 @@ async function adoptRemoteOtpConfigIfPresent() {
 }
 
 // Avvia la verifica aggiuntiva obbligatoria dopo che la password è risultata corretta, quando
-// biometria e/o TOTP sono già configurati su questo dispositivo: la sola password non deve
-// mai bastare in quel caso. Prova prima l'email (se configurata); se l'invio fallisce (es.
-// offline) o l'email non è configurata, propone il codice TOTP come alternativa (se
-// disponibile). Se non c'è alcun metodo utilizzabile, annulla e ributta alla schermata di login.
+// biometria e/o TOTP e/o email sono già configurati su questo dispositivo: la sola password
+// non deve mai bastare in quel caso. Prova prima l'email (se configurata); se l'invio fallisce
+// (es. offline) o l'email non è configurata, propone TOTP e/o la biometria come alternativa
+// (a seconda di cosa è disponibile). IMPORTANTE: la biometria è un metodo di verifica valido
+// tanto quanto email/TOTP — prima di questa correzione veniva ignorata qui, così chi aveva
+// configurato SOLO la biometria (senza TOTP né email) restava bloccato fuori ogni volta che
+// il percorso "password" veniva usato (es. per collegare Google Drive), perché il codice
+// dichiarava necessaria una verifica aggiuntiva ma non ne offriva mai una soddisfacibile.
+// Se non c'è alcun metodo utilizzabile, annulla e ributta alla schermata di login.
 async function startPostPasswordVerification() {
   const totpFallbackAvailable = TwoFactor.isTOTPRegistered();
+  const biometricFallbackAvailable = TwoFactor.isBiometricRegistered() && await TwoFactor.isPlatformAuthenticatorAvailable();
   document.getElementById('otp-verify-error').classList.add('hidden');
   document.getElementById('otp-verify-code').value = '';
-  document.getElementById('otp-use-totp-instead').classList.toggle('hidden', !totpFallbackAvailable);
   document.getElementById('btn-otp-resend').classList.add('hidden');
 
   UI.showScreen('screen-otp-verify');
   UI.resetAutoLockTimer(); // la vaultKey temporanea è comunque sensibile: non lasciarla in sospeso a tempo indeterminato
 
   if (EmailOTP.isEmailOtpConfigured()) {
-    await trySendEmailOtp(totpFallbackAvailable);
+    await trySendEmailOtp(totpFallbackAvailable, biometricFallbackAvailable);
   } else if (totpFallbackAvailable) {
-    switchOtpScreenToTotpMode();
+    switchOtpScreenToTotpMode(biometricFallbackAvailable);
+  } else if (biometricFallbackAvailable) {
+    switchOtpScreenToBiometricMode();
   } else {
     UI.showToast("Nessun metodo di verifica aggiuntivo configurato. Configuralo nelle impostazioni prima di riprovare.", "error");
     cancelPostPasswordVerification();
   }
 }
 
-async function trySendEmailOtp(totpFallbackAvailable) {
+async function trySendEmailOtp(totpFallbackAvailable, biometricFallbackAvailable = false) {
   otpVerificationMode = 'email';
   document.getElementById('otp-verify-mode').textContent = 'Ti abbiamo inviato un codice via email. Controlla la posta in arrivo.';
-  document.getElementById('otp-use-totp-instead').classList.toggle('hidden', !totpFallbackAvailable);
+  document.getElementById('form-otp-verify').classList.remove('hidden');
+  document.getElementById('btn-otp-verify-biometric').classList.add('hidden');
+  toggleOtpAlternativeLinks(totpFallbackAvailable, biometricFallbackAvailable);
   try {
     await EmailOTP.sendOtp();
     document.getElementById('btn-otp-resend').classList.remove('hidden');
@@ -340,21 +349,68 @@ async function trySendEmailOtp(totpFallbackAvailable) {
     console.error(err);
     if (totpFallbackAvailable) {
       UI.showToast("Invio email non riuscito (sei offline?). Usa il codice dell'app authenticator.", "warning");
-      switchOtpScreenToTotpMode();
+      switchOtpScreenToTotpMode(biometricFallbackAvailable);
+    } else if (biometricFallbackAvailable) {
+      UI.showToast("Invio email non riuscito (sei offline?). Usa l'impronta/volto.", "warning");
+      switchOtpScreenToBiometricMode();
     } else {
-      UI.showToast("Invio email non riuscito e nessun codice TOTP configurato come alternativa.", "error");
+      UI.showToast("Invio email non riuscito e nessun metodo alternativo configurato.", "error");
       cancelPostPasswordVerification();
     }
   }
 }
 
-function switchOtpScreenToTotpMode() {
+function switchOtpScreenToTotpMode(biometricFallbackAvailable = false) {
   otpVerificationMode = 'totp';
   document.getElementById('otp-verify-mode').textContent = 'Inserisci il codice a 6 cifre dalla tua app authenticator.';
-  document.getElementById('otp-use-totp-instead').classList.add('hidden');
+  document.getElementById('form-otp-verify').classList.remove('hidden');
+  document.getElementById('btn-otp-verify-biometric').classList.add('hidden');
   document.getElementById('btn-otp-resend').classList.add('hidden');
+  toggleOtpAlternativeLinks(false, biometricFallbackAvailable);
   document.getElementById('otp-verify-code').value = '';
   document.getElementById('otp-verify-code').focus();
+}
+
+// Nuova modalità: conferma tramite biometria (WebAuthn/PRF), usata quando è l'unico metodo
+// disponibile (o scelta esplicitamente dall'utente come alternativa a email/TOTP). Non c'è
+// nessun codice da digitare: un tap avvia subito la richiesta di impronta/volto, esattamente
+// come lo sblocco rapido nella schermata di login, ma qui serve solo a CONFERMARE il secondo
+// fattore (la vaultKey ottenuta per questa via sostituisce quella temporanea derivata dalla
+// password, che viene azzerata).
+function switchOtpScreenToBiometricMode() {
+  otpVerificationMode = 'biometric';
+  document.getElementById('otp-verify-mode').textContent = 'Conferma con impronta o volto per completare l\'accesso.';
+  document.getElementById('form-otp-verify').classList.add('hidden');
+  document.getElementById('btn-otp-verify-biometric').classList.remove('hidden');
+  document.getElementById('btn-otp-resend').classList.add('hidden');
+  toggleOtpAlternativeLinks(TwoFactor.isTOTPRegistered(), false);
+}
+
+// Mostra/nasconde i link "usa invece..." per passare a un metodo diverso da quello corrente.
+function toggleOtpAlternativeLinks(showTotpLink, showBiometricLink) {
+  document.getElementById('otp-use-totp-instead').classList.toggle('hidden', !showTotpLink);
+  document.getElementById('otp-use-biometric-instead').classList.toggle('hidden', !showBiometricLink);
+}
+
+// Esegue la conferma biometrica e completa lo sblocco. La vaultKey ottenuta per via biometrica
+// è calcolata in modo del tutto indipendente da quella derivata dalla password: usarla al posto
+// di quella "in sospeso" è la prova crittografica reale del secondo fattore, non solo un
+// controllo a schermo.
+async function handleBiometricPostPasswordVerification() {
+  const errorDiv = document.getElementById('otp-verify-error');
+  errorDiv.classList.add('hidden');
+  try {
+    const biometricVaultKeyRaw = await TwoFactor.unlockWithBiometric();
+    if (pendingVaultKeyRaw) {
+      crypto.getRandomValues(pendingVaultKeyRaw); // azzera la copia precedente prima di sostituirla
+    }
+    pendingVaultKeyRaw = biometricVaultKeyRaw;
+    await completePostPasswordVerification();
+  } catch (err) {
+    console.error(err);
+    errorDiv.textContent = err.message || "Verifica biometrica non riuscita.";
+    errorDiv.classList.remove('hidden');
+  }
 }
 
 // Verifica completata con successo: SOLO ORA si decifra davvero il contenuto del vault
@@ -583,7 +639,8 @@ function setupEventListeners() {
     btnOtpResend.addEventListener('click', async () => {
       btnOtpResend.disabled = true;
       btnOtpResend.textContent = 'Invio in corso...';
-      await trySendEmailOtp(TwoFactor.isTOTPRegistered());
+      const biometricAvailable = TwoFactor.isBiometricRegistered() && await TwoFactor.isPlatformAuthenticatorAvailable();
+      await trySendEmailOtp(TwoFactor.isTOTPRegistered(), biometricAvailable);
       btnOtpResend.disabled = false;
       btnOtpResend.textContent = 'Invia di nuovo il codice';
     });
@@ -591,8 +648,23 @@ function setupEventListeners() {
 
   const btnOtpUseTotpInstead = document.getElementById('otp-use-totp-instead');
   if (btnOtpUseTotpInstead) {
-    btnOtpUseTotpInstead.addEventListener('click', () => {
-      switchOtpScreenToTotpMode();
+    btnOtpUseTotpInstead.addEventListener('click', async () => {
+      const biometricAvailable = TwoFactor.isBiometricRegistered() && await TwoFactor.isPlatformAuthenticatorAvailable();
+      switchOtpScreenToTotpMode(biometricAvailable);
+    });
+  }
+
+  const btnOtpUseBiometricInstead = document.getElementById('otp-use-biometric-instead');
+  if (btnOtpUseBiometricInstead) {
+    btnOtpUseBiometricInstead.addEventListener('click', () => {
+      switchOtpScreenToBiometricMode();
+    });
+  }
+
+  const btnOtpVerifyBiometric = document.getElementById('btn-otp-verify-biometric');
+  if (btnOtpVerifyBiometric) {
+    btnOtpVerifyBiometric.addEventListener('click', () => {
+      handleBiometricPostPasswordVerification();
     });
   }
 
