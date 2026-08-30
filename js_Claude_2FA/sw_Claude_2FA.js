@@ -1,4 +1,4 @@
-const CACHE_NAME = 'dipavaultguard-v5';
+const CACHE_NAME = 'dipavaultguard-v5.1';
 // NOTA: percorsi RELATIVI (senza "/" iniziale). Il sito vive in un sottopercorso su GitHub
 // Pages (es. https://tuonome.github.io/nome-repo/): un percorso assoluto come "/index.html"
 // punterebbe alla radice del dominio invece che alla cartella del sito, e non verrebbe mai
