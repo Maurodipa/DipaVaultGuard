@@ -193,7 +193,15 @@ async function readCachedSecretKeyString() {
       throw new Error("La Secret Key salvata è protetta dalla biometria, ma la biometria non risulta configurata su questo dispositivo.");
     }
     UI.showToast("Conferma l'impronta/volto per recuperare la Secret Key salvata...", "info");
-    return await TwoFactor.decryptSecretKeyWithBiometric(parsed);
+    try {
+      return await TwoFactor.decryptSecretKeyWithBiometric(parsed);
+    } catch (e) {
+      // Il messaggio dell'eccezione originale (spesso una DOMException generica di
+      // crypto.subtle) può essere vuoto o poco chiaro: senza questo passaggio esplicito,
+      // il chiamante rischia di scambiare questo fallimento per una password sbagliata.
+      console.error("Impossibile decifrare la Secret Key salvata con la biometria:", e);
+      throw new Error("Impossibile recuperare la Secret Key salvata tramite biometria. Riprova, oppure inseriscila manualmente.");
+    }
   }
 
   return raw; // formato legacy: stringa in chiaro
@@ -400,11 +408,16 @@ async function handleBiometricPostPasswordVerification() {
   const errorDiv = document.getElementById('otp-verify-error');
   errorDiv.classList.add('hidden');
   try {
+    // La biometria qui serve SOLO come prova di possesso del dispositivo (secondo fattore):
+    // la vaultKey che conta davvero resta quella già verificata pochi istanti fa tramite
+    // password (+ eventuale Secret Key), che è garantita corretta per QUESTO blob specifico.
+    // NON va sostituita con quella ottenuta per via biometrica: sono normalmente identiche,
+    // ma la registrazione biometrica è locale a questo dispositivo e, in teoria, potrebbe
+    // riferirsi a una versione diversa del vault (es. se il file su Drive fosse più recente
+    // di quando la biometria fu registrata l'ultima volta) — usarla al posto della chiave
+    // già verificata rischierebbe di introdurre esattamente quel tipo di disallineamento.
     const biometricVaultKeyRaw = await TwoFactor.unlockWithBiometric();
-    if (pendingVaultKeyRaw) {
-      crypto.getRandomValues(pendingVaultKeyRaw); // azzera la copia precedente prima di sostituirla
-    }
-    pendingVaultKeyRaw = biometricVaultKeyRaw;
+    crypto.getRandomValues(biometricVaultKeyRaw); // era solo per la verifica, va scartata subito
     await completePostPasswordVerification();
   } catch (err) {
     console.error(err);
@@ -1428,13 +1441,23 @@ async function syncFromDrive(forceUnlockPrompt = false) {
           const remoteTime = new Date(remoteStats.lastUpdated).getTime();
           
           if (remoteTime > localTime) {
-            // Replace local
-            appVault = tempVault;
-            UI.initUI(appVault, driveClient);
-            localStorage.setItem(LOCAL_STORAGE_KEY, arrayBufferToBase64(remoteData));
-            UI.renderItemList(appVault.getAllItems());
-            UI.renderCategories(appVault.getCategories(), null);
-            UI.showToast("Vault aggiornato da Drive", "info");
+            // Non sostituire mai silenziosamente un vault locale protetto da 2SKD con uno
+            // remoto che non lo è: sarebbe un declassamento di sicurezza silenzioso, e la sola
+            // differenza di timestamp non è un segnale affidabile abbastanza per farlo senza
+            // che l'utente se ne accorga (es. se un caricamento precedente su Drive fosse
+            // fallito lasciando lì una copia più vecchia ma con timestamp comunque avanzato).
+            if (appVault.isTwoSecretKeyDerivationEnabled() && !tempVault.isTwoSecretKeyDerivationEnabled()) {
+              console.warn("Sync automatico da Drive saltato: il vault remoto non ha la protezione 2SKD attiva, quello locale sì.");
+              UI.showToast("Trovata su Drive una versione del vault senza la protezione Secret Key: sync automatico saltato per sicurezza. Usa 'Sincronizza ora' per forzare, se sei sicuro.", "warning");
+            } else {
+              // Replace local
+              appVault = tempVault;
+              UI.initUI(appVault, driveClient);
+              localStorage.setItem(LOCAL_STORAGE_KEY, arrayBufferToBase64(remoteData));
+              UI.renderItemList(appVault.getAllItems());
+              UI.renderCategories(appVault.getCategories(), null);
+              UI.showToast("Vault aggiornato da Drive", "info");
+            }
           } else if (localTime > remoteTime) {
             // Push local to remote
             saveAndSync();

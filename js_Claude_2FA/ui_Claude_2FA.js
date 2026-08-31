@@ -375,21 +375,26 @@ export function showScreen(screenId) {
   if (screen) screen.classList.remove('hidden');
 }
 
-export function showToast(message, type = 'info') {
+export function showToast(message, type = 'info', durationMs = null) {
   const container = document.getElementById('toast-container');
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
   toast.innerHTML = `<span>${message}</span>`;
   container.appendChild(toast);
-  
+
   // Trigger animation
   setTimeout(() => toast.classList.add('show'), 10);
-  
+
+  // I messaggi di errore restano visibili più a lungo (6s) di quelli di successo/info (3s):
+  // sono spesso più lunghi e più importanti da leggere con calma, specialmente su mobile.
+  const effectiveDuration = durationMs !== null ? durationMs : (type === 'error' ? 6000 : 3000);
+
   setTimeout(() => {
     toast.classList.remove('show');
     setTimeout(() => toast.remove(), 300);
-  }, 3000);
+  }, effectiveDuration);
 }
+
 
 function getFaviconUrl(urlStr) {
   try {
