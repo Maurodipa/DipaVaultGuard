@@ -249,7 +249,18 @@ async function upgradePlaintextSecretKeyToEncrypted() {
 async function getSecretKeyRawForBlob(blob) {
   if (!isSecretKeyRequired(blob)) return null;
 
-  const cached = await readCachedSecretKeyString();
+  let cached = null;
+  try {
+    cached = await readCachedSecretKeyString();
+  } catch (e) {
+    // La Secret Key era salvata in cache cifrata con la biometria, ma non è più decifrabile
+    // (tipicamente perché lo sblocco biometrico è stato disattivato e riattivato nel frattempo:
+    // quello crea una registrazione nuova, che non può decifrare ciò che era stato cifrato con
+    // quella precedente). Non blocchiamo l'accesso per questo: ricadiamo sull'inserimento
+    // manuale, esattamente come se non ci fosse alcuna copia in cache.
+    console.warn("Secret Key in cache non decifrabile, richiedo inserimento manuale:", e);
+    UI.showToast("La Secret Key salvata su questo dispositivo non è più leggibile (es. dopo aver rigenerato lo sblocco biometrico). Inseriscila di nuovo manualmente.", "warning");
+  }
   if (cached) return parseSecretKey(cached);
 
   const entered = prompt("Questo vault richiede anche la Secret Key (oltre alla password) — l'hai salvata quando hai attivato la protezione 2SKD:");
@@ -257,7 +268,7 @@ async function getSecretKeyRawForBlob(blob) {
     throw new Error("Secret Key necessaria per sbloccare questo vault.");
   }
   const trimmed = entered.trim();
-  await cacheSecretKeyLocally(trimmed);
+  await cacheSecretKeyLocally(trimmed); // ri-cifra con la registrazione biometrica attualmente attiva (se presente)
   return parseSecretKey(trimmed);
 }
 
@@ -1257,6 +1268,19 @@ function setupEventListeners() {
     btnDisableBiometric.addEventListener('click', () => {
       if (!confirm("Disattivare lo sblocco biometrico su questo dispositivo?")) return;
       TwoFactor.disableBiometric();
+      // Se la Secret Key era in cache cifrata con QUESTA registrazione biometrica, non sarà
+      // più decifrabile una volta disattivata: meglio rimuoverla subito (verrà richiesta di
+      // nuovo manualmente al prossimo sblocco, e ri-cifrata con la prossima registrazione, se
+      // ce ne sarà una) piuttosto che lasciarla lì come copia inutilizzabile.
+      const rawSecretKey = localStorage.getItem(SECRET_KEY_STORAGE_KEY);
+      if (rawSecretKey) {
+        try {
+          const parsedSecretKey = JSON.parse(rawSecretKey);
+          if (parsedSecretKey && parsedSecretKey.encrypted) {
+            localStorage.removeItem(SECRET_KEY_STORAGE_KEY);
+          }
+        } catch (e) { /* formato legacy in chiaro: non dipende dalla biometria, lascialo */ }
+      }
       UI.showToast("Sblocco biometrico disattivato", "info");
       UI.updateSecuritySettingsUI({
         biometricEnabled: TwoFactor.isBiometricRegistered(),
