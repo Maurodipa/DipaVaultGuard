@@ -1076,8 +1076,18 @@ function setupEventListeners() {
   let pending2SKDPreviousEnvelope = null; // per poter annullare senza lasciare lo stato inconsistente
 
   const btnEnable2SKD = document.getElementById('btn-enable-2skd');
-  if (btnEnable2SKD) {
-    btnEnable2SKD.addEventListener('click', async () => {
+  const enable2SKDConfirmRow = document.getElementById('enable-2skd-confirm-row');
+  const enable2SKDPasswordInput = document.getElementById('enable-2skd-password');
+  const btnEnable2SKDConfirm = document.getElementById('btn-enable-2skd-confirm');
+  const btnEnable2SKDCancel = document.getElementById('btn-enable-2skd-cancel');
+
+  // NOTA: qui si usa un campo nella pagina invece di window.prompt(). Chrome (e altri
+  // browser/webview mobili) può sopprimere silenziosamente i dialog nativi prompt()/alert()
+  // dopo che una pagina ne ha già mostrati diversi nella stessa sessione — senza alcun
+  // errore visibile: il click "funziona" ma prompt() ritorna null, e tutto sembra non fare
+  // nulla. Un campo di conferma nella pagina non ha questo problema.
+  if (btnEnable2SKD && enable2SKDConfirmRow) {
+    btnEnable2SKD.addEventListener('click', () => {
       if (!appVault.isUnlocked()) {
         UI.showToast("Il vault deve essere sbloccato", "error");
         return;
@@ -1086,7 +1096,22 @@ function setupEventListeners() {
         UI.showToast("La protezione Secret Key è già attiva su questo vault", "info");
         return;
       }
-      const current = prompt("Per attivare questa protezione, conferma la password principale attuale:");
+      enable2SKDPasswordInput.value = '';
+      enable2SKDConfirmRow.classList.remove('hidden');
+      enable2SKDPasswordInput.focus();
+    });
+  }
+
+  if (btnEnable2SKDCancel && enable2SKDConfirmRow) {
+    btnEnable2SKDCancel.addEventListener('click', () => {
+      enable2SKDConfirmRow.classList.add('hidden');
+      enable2SKDPasswordInput.value = '';
+    });
+  }
+
+  if (btnEnable2SKDConfirm) {
+    btnEnable2SKDConfirm.addEventListener('click', async () => {
+      const current = enable2SKDPasswordInput.value;
       if (!current) return;
 
       // Verifica la password prima di generare qualunque cosa
@@ -1108,6 +1133,9 @@ function setupEventListeners() {
         const { packed, secretKeyFormatted } = await appVault.enableTwoSecretKeyDerivation(current);
         pending2SKDPacked = packed;
         pending2SKDSecretKey = secretKeyFormatted;
+
+        enable2SKDConfirmRow.classList.add('hidden');
+        enable2SKDPasswordInput.value = '';
 
         document.getElementById('secret-key-display').textContent = secretKeyFormatted;
         document.getElementById('secret-key-confirm-checkbox').checked = false;
