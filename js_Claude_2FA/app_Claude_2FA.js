@@ -292,7 +292,7 @@ async function unlockBlobWithPasswordAndVerification(pwd, blob, persistLocally =
   appPassword = pwd;
   if (persistLocally) {
     debugBlobFingerprint('scrittura locale (unlock diretto)', blob);
-    localStorage.setItem(LOCAL_STORAGE_KEY, arrayBufferToBase64(blob));
+    persistLocalVaultBlob(blob);
   }
   TwoFactor.markFullPasswordAuth();
   UI.showToast("Vault sbloccato", "success");
@@ -450,7 +450,7 @@ async function completePostPasswordVerification() {
   const justPersistedFromDrive = pendingPersistLocally;
   if (pendingPersistLocally) {
     debugBlobFingerprint('scrittura locale (dopo verifica aggiuntiva)', pendingEncryptedBlob);
-    localStorage.setItem(LOCAL_STORAGE_KEY, arrayBufferToBase64(pendingEncryptedBlob));
+    persistLocalVaultBlob(pendingEncryptedBlob);
   }
   pendingVaultKeyRaw = null;
   pendingEncryptedBlob = null;
@@ -790,6 +790,7 @@ function setupEventListeners() {
       }
       try {
         const vaultKeyRaw = await TwoFactor.unlockWithBiometric();
+        debugBlobFingerprint('CHIAVE sbloccata (impronta, login)', vaultKeyRaw);
         const encryptedBlob = base64ToArrayBuffer(localVaultData);
         debugBlobFingerprint('lettura locale (sblocco impronta)', encryptedBlob);
         await appVault.unlockWithVaultKey(vaultKeyRaw, encryptedBlob);
@@ -1266,6 +1267,7 @@ function setupEventListeners() {
       }
       try {
         UI.showToast("Segui le istruzioni del dispositivo per la verifica biometrica...", "info");
+        debugBlobFingerprint('CHIAVE avvolta (Abilita biometria)', appVault.vaultKeyRaw);
         await TwoFactor.registerBiometric(appVault.vaultKeyRaw);
         TwoFactor.markFullPasswordAuth();
         await upgradePlaintextSecretKeyToEncrypted();
@@ -1538,6 +1540,25 @@ function debugBlobFingerprint(label, bytes) {
   } catch (e) {
     console.warn("debugBlobFingerprint error:", e);
   }
+}
+
+// Salva il blob nel vault locale, invalidando prima eventuali registrazioni biometriche/TOTP
+// esistenti SE il contenuto locale sta per cambiare rispetto a quello che c'era prima.
+// Perché: quella registrazione protegge la vaultKey della versione PRECEDENTE del vault. Se
+// il contenuto locale cambia (es. per un ripristino da Drive di una versione diversa), non
+// c'è modo affidabile di sapere se la vaultKey è rimasta la stessa senza tentare uno sblocco
+// vero e proprio — quindi, per sicurezza, si invalidano qui: meglio richiedere una nuova
+// registrazione esplicita che rischiare un blocco fuori silenzioso (chiave diversa da quella
+// che l'impronta/TOTP si aspettano, ma che appare comunque "attiva" nelle Impostazioni).
+function persistLocalVaultBlob(newBlobBytes) {
+  const existingBase64 = localStorage.getItem(LOCAL_STORAGE_KEY);
+  const newBase64 = arrayBufferToBase64(newBlobBytes);
+  if (existingBase64 && existingBase64 !== newBase64 && (TwoFactor.isBiometricRegistered() || TwoFactor.isTOTPRegistered())) {
+    console.warn("Vault locale sostituito con un contenuto diverso: invalido le registrazioni 2FA locali esistenti perché potrebbero non corrispondere più alla nuova vaultKey.");
+    TwoFactor.clearAllSecondFactors();
+    UI.showToast("Il vault locale è stato aggiornato con una versione diversa da Drive: sblocco biometrico/TOTP disattivati su questo dispositivo. Riattivali dalle Impostazioni.", "warning");
+  }
+  localStorage.setItem(LOCAL_STORAGE_KEY, newBase64);
 }
 
 function arrayBufferToBase64(buffer) {
