@@ -291,6 +291,7 @@ async function unlockBlobWithPasswordAndVerification(pwd, blob, persistLocally =
   await appVault.unlock(pwd, blob, secretKeyRaw);
   appPassword = pwd;
   if (persistLocally) {
+    debugBlobFingerprint('scrittura locale (unlock diretto)', blob);
     localStorage.setItem(LOCAL_STORAGE_KEY, arrayBufferToBase64(blob));
   }
   TwoFactor.markFullPasswordAuth();
@@ -448,6 +449,7 @@ async function completePostPasswordVerification() {
   await appVault.unlockWithVaultKey(pendingVaultKeyRaw, pendingEncryptedBlob);
   const justPersistedFromDrive = pendingPersistLocally;
   if (pendingPersistLocally) {
+    debugBlobFingerprint('scrittura locale (dopo verifica aggiuntiva)', pendingEncryptedBlob);
     localStorage.setItem(LOCAL_STORAGE_KEY, arrayBufferToBase64(pendingEncryptedBlob));
   }
   pendingVaultKeyRaw = null;
@@ -627,6 +629,7 @@ function setupEventListeners() {
 
       try {
         const encryptedBlob = base64ToArrayBuffer(localVaultData);
+        debugBlobFingerprint('lettura locale (form password)', encryptedBlob);
         document.getElementById('login-password').value = '';
         // Verifica la password ed eventualmente avvia la verifica aggiuntiva (biometria/TOTP
         // registrati qui, o OTP via email configurato) SENZA decifrare subito il vault.
@@ -788,6 +791,7 @@ function setupEventListeners() {
       try {
         const vaultKeyRaw = await TwoFactor.unlockWithBiometric();
         const encryptedBlob = base64ToArrayBuffer(localVaultData);
+        debugBlobFingerprint('lettura locale (sblocco impronta)', encryptedBlob);
         await appVault.unlockWithVaultKey(vaultKeyRaw, encryptedBlob);
         // appPassword resta null: non l'abbiamo mai avuta in questo percorso.
         // Il salvataggio delle modifiche funziona comunque (vedi saveAndSync/getEncryptedData).
@@ -1519,6 +1523,23 @@ async function syncFromDrive(forceUnlockPrompt = false) {
 
 
 // --- Helper Functions for Base64 <-> ArrayBuffer ---
+// --- DIAGNOSTICA TEMPORANEA --- da rimuovere una volta risolto il problema del blob locale.
+// Stampa (e mostra in un toast) lunghezza + checksum di un blob, per verificare se quanto
+// viene scritto in localStorage durante il ripristino da Drive è davvero identico a quanto
+// viene riletto da lì al momento dello sblocco locale (password o impronta).
+function debugBlobFingerprint(label, bytes) {
+  try {
+    const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    let sum = 0;
+    for (let i = 0; i < arr.length; i++) sum = (sum + arr[i] * (i + 1)) % 1000000007;
+    const msg = `DEBUG [${label}]: len=${arr.length} checksum=${sum}`;
+    console.log(msg);
+    UI.showToast(msg, "info", 8000);
+  } catch (e) {
+    console.warn("debugBlobFingerprint error:", e);
+  }
+}
+
 function arrayBufferToBase64(buffer) {
   let binary = '';
   const bytes = new Uint8Array(buffer);
