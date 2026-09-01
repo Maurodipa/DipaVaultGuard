@@ -291,7 +291,7 @@ async function unlockBlobWithPasswordAndVerification(pwd, blob, persistLocally =
   await appVault.unlock(pwd, blob, secretKeyRaw);
   appPassword = pwd;
   if (persistLocally) {
-    debugBlobFingerprint('scrittura locale (unlock diretto)', blob);
+    await debugBlobFingerprint('scrittura locale (unlock diretto)', blob);
     persistLocalVaultBlob(blob);
   }
   TwoFactor.markFullPasswordAuth();
@@ -449,7 +449,7 @@ async function completePostPasswordVerification() {
   await appVault.unlockWithVaultKey(pendingVaultKeyRaw, pendingEncryptedBlob);
   const justPersistedFromDrive = pendingPersistLocally;
   if (pendingPersistLocally) {
-    debugBlobFingerprint('scrittura locale (dopo verifica aggiuntiva)', pendingEncryptedBlob);
+    await debugBlobFingerprint('scrittura locale (dopo verifica aggiuntiva)', pendingEncryptedBlob);
     persistLocalVaultBlob(pendingEncryptedBlob);
   }
   pendingVaultKeyRaw = null;
@@ -629,7 +629,7 @@ function setupEventListeners() {
 
       try {
         const encryptedBlob = base64ToArrayBuffer(localVaultData);
-        debugBlobFingerprint('lettura locale (form password)', encryptedBlob);
+        await debugBlobFingerprint('lettura locale (form password)', encryptedBlob);
         document.getElementById('login-password').value = '';
         // Verifica la password ed eventualmente avvia la verifica aggiuntiva (biometria/TOTP
         // registrati qui, o OTP via email configurato) SENZA decifrare subito il vault.
@@ -790,9 +790,9 @@ function setupEventListeners() {
       }
       try {
         const vaultKeyRaw = await TwoFactor.unlockWithBiometric();
-        debugBlobFingerprint('CHIAVE sbloccata (impronta, login)', vaultKeyRaw);
+        await debugBlobFingerprint('CHIAVE sbloccata (impronta, login)', vaultKeyRaw);
         const encryptedBlob = base64ToArrayBuffer(localVaultData);
-        debugBlobFingerprint('lettura locale (sblocco impronta)', encryptedBlob);
+        await debugBlobFingerprint('lettura locale (sblocco impronta)', encryptedBlob);
         await appVault.unlockWithVaultKey(vaultKeyRaw, encryptedBlob);
         // appPassword resta null: non l'abbiamo mai avuta in questo percorso.
         // Il salvataggio delle modifiche funziona comunque (vedi saveAndSync/getEncryptedData).
@@ -1267,7 +1267,7 @@ function setupEventListeners() {
       }
       try {
         UI.showToast("Segui le istruzioni del dispositivo per la verifica biometrica...", "info");
-        debugBlobFingerprint('CHIAVE avvolta (Abilita biometria)', appVault.vaultKeyRaw);
+        await debugBlobFingerprint('CHIAVE avvolta (Abilita biometria)', appVault.vaultKeyRaw);
         await TwoFactor.registerBiometric(appVault.vaultKeyRaw);
         TwoFactor.markFullPasswordAuth();
         await upgradePlaintextSecretKeyToEncrypted();
@@ -1526,17 +1526,17 @@ async function syncFromDrive(forceUnlockPrompt = false) {
 
 // --- Helper Functions for Base64 <-> ArrayBuffer ---
 // --- DIAGNOSTICA TEMPORANEA --- da rimuovere una volta risolto il problema del blob locale.
-// Stampa (e mostra in un toast) lunghezza + checksum di un blob, per verificare se quanto
-// viene scritto in localStorage durante il ripristino da Drive è davvero identico a quanto
-// viene riletto da lì al momento dello sblocco locale (password o impronta).
-function debugBlobFingerprint(label, bytes) {
+// Hash SHA-256 (vero, crittograficamente affidabile — niente più somme pesate che potrebbero
+// coincidere per caso) di un blob, per verificare con certezza assoluta se due valori (chiave
+// o blob) sono davvero identici byte per byte.
+async function debugBlobFingerprint(label, bytes) {
   try {
     const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-    let sum = 0;
-    for (let i = 0; i < arr.length; i++) sum = (sum + arr[i] * (i + 1)) % 1000000007;
-    const msg = `DEBUG [${label}]: len=${arr.length} checksum=${sum}`;
+    const digest = await crypto.subtle.digest('SHA-256', arr);
+    const hex = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+    const msg = `DEBUG [${label}]: len=${arr.length} sha256=${hex}`;
     console.log(msg);
-    UI.showToast(msg, "info", 8000);
+    UI.showToast(msg, "info", 10000);
   } catch (e) {
     console.warn("debugBlobFingerprint error:", e);
   }
