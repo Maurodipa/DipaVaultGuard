@@ -299,7 +299,11 @@ async function unlockBlobWithPasswordAndVerification(pwd, blob, persistLocally =
   UI.renderItemList(appVault.getAllItems());
   UI.renderCategories(appVault.getCategories(), null);
   UI.resetAutoLockTimer();
-  if (driveClient && driveClient.isAuthenticated()) {
+  // Vedi il commento gemello in completePostPasswordVerification(): se abbiamo appena
+  // salvato localmente il blob scaricato da Drive in QUESTA stessa chiamata, un secondo
+  // sync immediato è ridondante e rischia di sovrascrivere la copia corretta con una
+  // versione temporaneamente stale restituita dall'API di Drive.
+  if (!persistLocally && driveClient && driveClient.isAuthenticated()) {
     syncFromDrive();
   }
 }
@@ -442,6 +446,7 @@ async function handleBiometricPostPasswordVerification() {
 // esattamente come un login normale.
 async function completePostPasswordVerification() {
   await appVault.unlockWithVaultKey(pendingVaultKeyRaw, pendingEncryptedBlob);
+  const justPersistedFromDrive = pendingPersistLocally;
   if (pendingPersistLocally) {
     localStorage.setItem(LOCAL_STORAGE_KEY, arrayBufferToBase64(pendingEncryptedBlob));
   }
@@ -456,7 +461,15 @@ async function completePostPasswordVerification() {
   UI.renderItemList(appVault.getAllItems());
   UI.renderCategories(appVault.getCategories(), null);
   UI.resetAutoLockTimer();
-  if (driveClient && driveClient.isAuthenticated()) {
+  // Se abbiamo appena scaricato e salvato localmente il blob da Drive in QUESTA stessa
+  // operazione, locale e remoto sono già garantiti allineati: un secondo sync immediato è
+  // ridondante e, peggio, rischioso — se l'API di Drive restituisse per un istante una
+  // versione leggermente vecchia del file appena caricato (comportamento noto delle API
+  // cloud, coerenza "eventuale"), questo secondo sync potrebbe sovrascrivere la copia locale
+  // corretta con una vecchia. Lo saltiamo solo in questo caso; per uno sblocco puramente
+  // locale (password/biometria senza passare da Drive) il sync in background resta utile per
+  // recuperare eventuali modifiche fatte da altri dispositivi.
+  if (!justPersistedFromDrive && driveClient && driveClient.isAuthenticated()) {
     syncFromDrive();
   }
 }
@@ -1018,6 +1031,10 @@ function setupEventListeners() {
         UI.showToast("Vault bloccato", "info");
         UI.showScreen('screen-login');
         document.getElementById('login-password').value = '';
+        // Senza questa chiamata, la schermata di login mostrerebbe lo stato di sblocco rapido
+        // calcolato all'apertura della pagina: se la biometria è stata registrata/modificata
+        // durante la sessione corrente, il pulsante non comparirebbe finché non si ricarica.
+        refreshLoginQuickUnlockUI();
       }
     });
   }
@@ -1193,8 +1210,10 @@ function setupEventListeners() {
       await saveAndSync();
 
       document.getElementById('modal-2skd-reveal').classList.add('hidden');
-      document.getElementById('settings-2skd-status').textContent = 'Attiva';
-      if (btnEnable2SKD) btnEnable2SKD.disabled = true;
+      document.getElementById('settings-2skd-status').textContent = 'Protezione attiva';
+      if (btnEnable2SKD) btnEnable2SKD.classList.add('hidden');
+      const activeNote = document.getElementById('settings-2skd-active-note');
+      if (activeNote) activeNote.classList.remove('hidden');
 
       pending2SKDPacked = null;
       pending2SKDSecretKey = null;

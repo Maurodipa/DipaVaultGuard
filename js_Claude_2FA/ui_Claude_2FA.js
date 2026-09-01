@@ -645,9 +645,15 @@ export function openSettings() {
 
   const twoSkdStatus = document.getElementById('settings-2skd-status');
   const btnEnable2SKDEl = document.getElementById('btn-enable-2skd');
+  const twoSkdActiveNote = document.getElementById('settings-2skd-active-note');
   const twoSkdActive = appVault && typeof appVault.isTwoSecretKeyDerivationEnabled === 'function' && appVault.isTwoSecretKeyDerivationEnabled();
-  if (twoSkdStatus) twoSkdStatus.textContent = twoSkdActive ? 'Attiva' : 'Non attiva';
-  if (btnEnable2SKDEl) btnEnable2SKDEl.disabled = !!twoSkdActive;
+  // Il pulsante dice "Attiva" (verbo): se lo stato usasse la stessa parola come aggettivo
+  // ("Attiva" = "è attiva"), le due etichette sembrerebbero contraddirsi a vicenda. Quando la
+  // protezione è già attiva, il pulsante viene nascosto del tutto (non solo disabilitato) e
+  // sostituito da una nota inequivocabile.
+  if (twoSkdStatus) twoSkdStatus.textContent = twoSkdActive ? 'Protezione attiva' : 'Non attiva';
+  if (btnEnable2SKDEl) btnEnable2SKDEl.classList.toggle('hidden', !!twoSkdActive);
+  if (twoSkdActiveNote) twoSkdActiveNote.classList.toggle('hidden', !twoSkdActive);
 
   modal.classList.remove('hidden');
 }
