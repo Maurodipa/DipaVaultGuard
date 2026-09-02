@@ -18,9 +18,14 @@ const MAGIC_2SKD = new Uint8Array([0x32, 0x53, 0x4B, 0x44]); // ASCII "2SKD"
 const ENVELOPE_LENGTH = 76; // salt(16) + ivKey(12) + encryptedVaultKey(48), invariato nei due formati
 
 function hasMagicPrefix(packedData) {
-  if (packedData.length < MAGIC_2SKD.length) return false;
+  // Difesa in profondità: se qualcuno passa per errore un ArrayBuffer grezzo invece di un
+  // Uint8Array, packedData[i] e packedData.length restituirebbero silenziosamente `undefined`
+  // (nessun errore), facendo fallire questo controllo in modo impossibile da diagnosticare a
+  // valle. Normalizziamo qui una volta per tutte.
+  const data = packedData instanceof Uint8Array ? packedData : new Uint8Array(packedData);
+  if (data.length < MAGIC_2SKD.length) return false;
   for (let i = 0; i < MAGIC_2SKD.length; i++) {
-    if (packedData[i] !== MAGIC_2SKD[i]) return false;
+    if (data[i] !== MAGIC_2SKD[i]) return false;
   }
   return true;
 }

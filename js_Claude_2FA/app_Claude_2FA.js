@@ -291,7 +291,6 @@ async function unlockBlobWithPasswordAndVerification(pwd, blob, persistLocally =
   await appVault.unlock(pwd, blob, secretKeyRaw);
   appPassword = pwd;
   if (persistLocally) {
-    await debugBlobFingerprint('scrittura locale (unlock diretto)', blob);
     persistLocalVaultBlob(blob);
   }
   TwoFactor.markFullPasswordAuth();
@@ -449,7 +448,6 @@ async function completePostPasswordVerification() {
   await appVault.unlockWithVaultKey(pendingVaultKeyRaw, pendingEncryptedBlob);
   const justPersistedFromDrive = pendingPersistLocally;
   if (pendingPersistLocally) {
-    await debugBlobFingerprint('scrittura locale (dopo verifica aggiuntiva)', pendingEncryptedBlob);
     persistLocalVaultBlob(pendingEncryptedBlob);
   }
   pendingVaultKeyRaw = null;
@@ -629,7 +627,6 @@ function setupEventListeners() {
 
       try {
         const encryptedBlob = base64ToArrayBuffer(localVaultData);
-        await debugBlobFingerprint('lettura locale (form password)', encryptedBlob);
         document.getElementById('login-password').value = '';
         // Verifica la password ed eventualmente avvia la verifica aggiuntiva (biometria/TOTP
         // registrati qui, o OTP via email configurato) SENZA decifrare subito il vault.
@@ -790,9 +787,7 @@ function setupEventListeners() {
       }
       try {
         const vaultKeyRaw = await TwoFactor.unlockWithBiometric();
-        await debugBlobFingerprint('CHIAVE sbloccata (impronta, login)', vaultKeyRaw);
         const encryptedBlob = base64ToArrayBuffer(localVaultData);
-        await debugBlobFingerprint('lettura locale (sblocco impronta)', encryptedBlob);
         await appVault.unlockWithVaultKey(vaultKeyRaw, encryptedBlob);
         // appPassword resta null: non l'abbiamo mai avuta in questo percorso.
         // Il salvataggio delle modifiche funziona comunque (vedi saveAndSync/getEncryptedData).
@@ -1267,7 +1262,6 @@ function setupEventListeners() {
       }
       try {
         UI.showToast("Segui le istruzioni del dispositivo per la verifica biometrica...", "info");
-        await debugBlobFingerprint('CHIAVE avvolta (Abilita biometria)', appVault.vaultKeyRaw);
         await TwoFactor.registerBiometric(appVault.vaultKeyRaw);
         TwoFactor.markFullPasswordAuth();
         await upgradePlaintextSecretKeyToEncrypted();
@@ -1525,22 +1519,6 @@ async function syncFromDrive(forceUnlockPrompt = false) {
 
 
 // --- Helper Functions for Base64 <-> ArrayBuffer ---
-// --- DIAGNOSTICA TEMPORANEA --- da rimuovere una volta risolto il problema del blob locale.
-// Hash SHA-256 (vero, crittograficamente affidabile — niente più somme pesate che potrebbero
-// coincidere per caso) di un blob, per verificare con certezza assoluta se due valori (chiave
-// o blob) sono davvero identici byte per byte.
-async function debugBlobFingerprint(label, bytes) {
-  try {
-    const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-    const digest = await crypto.subtle.digest('SHA-256', arr);
-    const hex = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
-    const msg = `DEBUG [${label}]: len=${arr.length} sha256=${hex}`;
-    console.log(msg);
-    UI.showToast(msg, "info", 10000);
-  } catch (e) {
-    console.warn("debugBlobFingerprint error:", e);
-  }
-}
 
 // Salva il blob nel vault locale, invalidando SEMPRE eventuali registrazioni biometriche/TOTP
 // esistenti su questo dispositivo quando il blob arriva da un ripristino/connessione a Drive.
@@ -1552,14 +1530,20 @@ async function debugBlobFingerprint(label, bytes) {
 // biometriche fatte in momenti diversi, non necessariamente coerenti tra loro). Meglio
 // richiedere sempre una nuova registrazione esplicita dopo un ripristino da Drive, che rischiare
 // un blocco fuori silenzioso.
+// Salva il blob nel vault locale. Se il contenuto sta per cambiare rispetto a quello che
+// c'era prima (es. per un ripristino da Drive di una versione diversa, magari da un altro
+// dispositivo), invalida per sicurezza eventuali registrazioni biometriche/TOTP esistenti su
+// questo dispositivo: proteggevano la vaultKey della versione precedente, che potrebbe non
+// essere più quella giusta.
 function persistLocalVaultBlob(newBlobBytes) {
-  const hadSecondFactors = TwoFactor.isBiometricRegistered() || TwoFactor.isTOTPRegistered();
-  if (hadSecondFactors) {
-    console.warn("Vault locale scritto da un ripristino/connessione a Drive: invalido le registrazioni 2FA locali esistenti per sicurezza (potrebbero non corrispondere più alla vaultKey attuale).");
+  const existingBase64 = localStorage.getItem(LOCAL_STORAGE_KEY);
+  const newBase64 = arrayBufferToBase64(newBlobBytes);
+  if (existingBase64 && existingBase64 !== newBase64 && (TwoFactor.isBiometricRegistered() || TwoFactor.isTOTPRegistered())) {
+    console.warn("Vault locale sostituito con un contenuto diverso: invalido le registrazioni 2FA locali esistenti perché potrebbero non corrispondere più alla nuova vaultKey.");
     TwoFactor.clearAllSecondFactors();
-    UI.showToast("Sblocco biometrico/TOTP disattivati su questo dispositivo dopo il ripristino da Drive, per sicurezza. Riattivali dalle Impostazioni.", "warning");
+    UI.showToast("Il vault locale è stato aggiornato con una versione diversa da Drive: sblocco biometrico/TOTP disattivati su questo dispositivo. Riattivali dalle Impostazioni.", "warning");
   }
-  localStorage.setItem(LOCAL_STORAGE_KEY, arrayBufferToBase64(newBlobBytes));
+  localStorage.setItem(LOCAL_STORAGE_KEY, newBase64);
 }
 
 function arrayBufferToBase64(buffer) {
@@ -1579,5 +1563,10 @@ function base64ToArrayBuffer(base64) {
   for (let i = 0; i < len; i++) {
     bytes[i] = binary_string.charCodeAt(i);
   }
-  return bytes.buffer;
+  // NON restituire bytes.buffer: hasMagicPrefix() in crypto.js (e altre funzioni) leggono i
+  // byte con la sintassi dati[i] e dati.length, che su un ArrayBuffer grezzo restituiscono
+  // silenziosamente `undefined` invece di un errore. Per un vault protetto da 2SKD, questo
+  // fa fallire il riconoscimento del marcatore ogni volta che il blob viene riletto da
+  // localStorage, causando un fallimento di decifratura silenzioso e apparentemente casuale.
+  return bytes;
 }
