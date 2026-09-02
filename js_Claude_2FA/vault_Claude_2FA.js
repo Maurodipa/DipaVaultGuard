@@ -178,7 +178,7 @@ export class Vault {
         let currentValue = '';
         for (let j = 0; j < lines[i].length; j++) {
             const char = lines[i][j];
-            if (char === '"' && lines[i][j+1] === '"') {
+            if (char === '"' && lines[i][j+1] === '"' && inQuotes) {
                 currentValue += '"';
                 j++;
             } else if (char === '"') {
