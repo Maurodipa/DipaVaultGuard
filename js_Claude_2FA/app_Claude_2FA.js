@@ -227,10 +227,14 @@ async function cacheSecretKeyLocally(secretKeyFormatted) {
       localStorage.setItem(SECRET_KEY_STORAGE_KEY, JSON.stringify({ encrypted: true, ...record }));
       return;
     } catch (e) {
-      console.warn("Impossibile cifrare la Secret Key con la biometria, la salvo in chiaro:", e);
+      console.warn("Impossibile cifrare la Secret Key con la biometria, non la metto in cache:", e);
     }
   }
-  localStorage.setItem(SECRET_KEY_STORAGE_KEY, secretKeyFormatted);
+  // NON salvare la Secret Key in chiaro quando non c'è modo di proteggerla su questo
+  // dispositivo (nessuna biometria configurata, o cifratura fallita): farlo vanificherebbe lo
+  // scopo del 2SKD, perché da quel momento basterebbe la sola password per sbloccare il vault
+  // su questo dispositivo, con la Secret Key recuperata silenziosamente dalla cache. Meglio
+  // richiederla di nuovo ad ogni sblocco finché non c'è un fattore locale che la protegga.
 }
 
 // Se sul dispositivo è già salvata una Secret Key in chiaro (formato legacy, da prima che la
