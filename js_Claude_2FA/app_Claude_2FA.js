@@ -181,6 +181,13 @@ function requiresExtraVerification() {
 // formato in chiaro (stringa semplice) sia quello nuovo cifrato con la biometria (oggetto
 // JSON {encrypted:true, iv, wrapped}), per restare compatibile con quanto già salvato in
 // precedenza. Se è cifrata, chiede la verifica biometrica per decifrarla.
+// Vero se, nell'ultima chiamata a getSecretKeyRawForBlob(), la Secret Key è stata recuperata
+// decifrandola con una verifica biometrica appena avvenuta (non da cache in chiaro, non da
+// inserimento manuale). Usato per evitare di richiedere l'impronta una seconda volta subito
+// dopo nella schermata "Verifica aggiuntiva": una conferma biometrica appena riuscita è già
+// una prova valida del secondo fattore, chiederla di nuovo sarebbe ridondante.
+let secretKeyJustVerifiedViaBiometric = false;
+
 async function readCachedSecretKeyString() {
   const raw = localStorage.getItem(SECRET_KEY_STORAGE_KEY);
   if (!raw) return null;
@@ -194,7 +201,9 @@ async function readCachedSecretKeyString() {
     }
     UI.showToast("Conferma l'impronta/volto per recuperare la Secret Key salvata...", "info");
     try {
-      return await TwoFactor.decryptSecretKeyWithBiometric(parsed);
+      const result = await TwoFactor.decryptSecretKeyWithBiometric(parsed);
+      secretKeyJustVerifiedViaBiometric = true;
+      return result;
     } catch (e) {
       // Il messaggio dell'eccezione originale (spesso una DOMException generica di
       // crypto.subtle) può essere vuoto o poco chiaro: senza questo passaggio esplicito,
@@ -247,6 +256,7 @@ async function upgradePlaintextSecretKeyToEncrypted() {
 // sbloccare un blob 2SKD. Restituisce null se il blob non richiede affatto la Secret Key
 // (formato v1, il caso comune).
 async function getSecretKeyRawForBlob(blob) {
+  secretKeyJustVerifiedViaBiometric = false;
   if (!isSecretKeyRequired(blob)) return null;
 
   let cached = null;
@@ -279,7 +289,11 @@ async function getSecretKeyRawForBlob(blob) {
 async function unlockBlobWithPasswordAndVerification(pwd, blob, persistLocally = false) {
   const secretKeyRaw = await getSecretKeyRawForBlob(blob); // null se il blob non è 2SKD
 
-  if (requiresExtraVerification()) {
+  // Se la Secret Key è appena stata recuperata con una verifica biometrica riuscita, quella
+  // conferma vale già come secondo fattore per questo sblocco: chiederlo di nuovo tra un
+  // istante nella schermata "Verifica aggiuntiva" sarebbe ridondante (due impronte per un
+  // solo sblocco). Andiamo dritti al risultato, come se la verifica aggiuntiva non servisse.
+  if (requiresExtraVerification() && !secretKeyJustVerifiedViaBiometric) {
     const vaultKeyRaw = await verifyPasswordAndGetVaultKey(pwd, blob, secretKeyRaw);
     pendingVaultKeyRaw = vaultKeyRaw;
     pendingEncryptedBlob = blob;
