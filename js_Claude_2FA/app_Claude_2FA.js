@@ -669,6 +669,7 @@ function setupEventListeners() {
           errorDiv.textContent = err.message || "Password principale errata";
         }
         errorDiv.classList.remove('hidden');
+        setTimeout(() => errorDiv.classList.add('hidden'), 6000);
         UI.showScreen('screen-login');
       }
     });
@@ -1540,12 +1541,22 @@ async function syncFromDrive(forceUnlockPrompt = false) {
               UI.showToast("Trovata su Drive una versione del vault senza la protezione Secret Key: sync automatico saltato per sicurezza. Usa 'Sincronizza ora' per forzare, se sei sicuro.", "warning");
             } else {
               // Replace local
+              const hadBiometric = TwoFactor.isBiometricRegistered();
+              const hadTotp = TwoFactor.isTOTPRegistered();
               appVault = tempVault;
               UI.initUI(appVault, driveClient);
               localStorage.setItem(LOCAL_STORAGE_KEY, arrayBufferToBase64(remoteData));
+              // Quando il contenuto del vault cambia da un'altra fonte, le registrazioni
+              // biometriche/TOTP locali non sono più valide per il nuovo vault: le resettiamo.
+              if (hadBiometric || hadTotp) { TwoFactor.clearAllSecondFactors(); }
               UI.renderItemList(appVault.getAllItems());
               UI.renderCategories(appVault.getCategories(), null);
               UI.showToast("Vault aggiornato da Drive", "info");
+              if (hadBiometric || hadTotp) {
+                setTimeout(() => {
+                  UI.showToast("Sblocco biometrico e/o TOTP sono stati disattivati per sicurezza (contenuto del vault cambiato da un altro dispositivo). Riconfigurali nelle Impostazioni.", "warning");
+                }, 1500);
+              }
             }
           } else if (localTime > remoteTime) {
             // Push local to remote
