@@ -356,6 +356,7 @@ async function startPostPasswordVerification() {
   document.getElementById('otp-verify-error').classList.add('hidden');
   document.getElementById('otp-verify-code').value = '';
   document.getElementById('btn-otp-resend').classList.add('hidden');
+  document.getElementById('btn-otp-reset-biometric').classList.add('hidden');
 
   UI.showScreen('screen-otp-verify');
   UI.resetAutoLockTimer(); // la vaultKey temporanea è comunque sensibile: non lasciarla in sospeso a tempo indeterminato
@@ -377,6 +378,7 @@ async function trySendEmailOtp(totpFallbackAvailable, biometricFallbackAvailable
   document.getElementById('otp-verify-mode').textContent = 'Ti abbiamo inviato un codice via email. Controlla la posta in arrivo.';
   document.getElementById('form-otp-verify').classList.remove('hidden');
   document.getElementById('btn-otp-verify-biometric').classList.add('hidden');
+  document.getElementById('btn-otp-reset-biometric').classList.add('hidden');
   toggleOtpAlternativeLinks(totpFallbackAvailable, biometricFallbackAvailable);
   try {
     await EmailOTP.sendOtp();
@@ -403,6 +405,7 @@ function switchOtpScreenToTotpMode(biometricFallbackAvailable = false) {
   document.getElementById('form-otp-verify').classList.remove('hidden');
   document.getElementById('btn-otp-verify-biometric').classList.add('hidden');
   document.getElementById('btn-otp-resend').classList.add('hidden');
+  document.getElementById('btn-otp-reset-biometric').classList.add('hidden');
   toggleOtpAlternativeLinks(false, biometricFallbackAvailable);
   document.getElementById('otp-verify-code').value = '';
   document.getElementById('otp-verify-code').focus();
@@ -421,6 +424,11 @@ function switchOtpScreenToBiometricMode() {
   document.getElementById('btn-otp-verify-biometric').classList.remove('hidden');
   document.getElementById('btn-otp-resend').classList.add('hidden');
   toggleOtpAlternativeLinks(TwoFactor.isTOTPRegistered(), false);
+  // Via di fuga: se la biometria non funziona più su questo dispositivo (es. la passkey è
+  // stata eliminata dal gestore password del telefono) e non c'è nessun altro metodo
+  // configurato, senza questo link l'utente resterebbe bloccato fuori senza alcuna soluzione
+  // possibile se non cancellare i dati dell'app da fuori.
+  document.getElementById('btn-otp-reset-biometric').classList.remove('hidden');
 }
 
 // Mostra/nasconde i link "usa invece..." per passare a un metodo diverso da quello corrente.
@@ -716,6 +724,26 @@ function setupEventListeners() {
   if (btnOtpVerifyBiometric) {
     btnOtpVerifyBiometric.addEventListener('click', () => {
       handleBiometricPostPasswordVerification();
+    });
+  }
+
+  const btnOtpResetBiometric = document.getElementById('btn-otp-reset-biometric');
+  if (btnOtpResetBiometric) {
+    btnOtpResetBiometric.addEventListener('click', () => {
+      if (!confirm("Questo disattiva lo sblocco biometrico su questo dispositivo (utile se la passkey non è più valida — cancellata dal gestore password del telefono, cambio dispositivo, ecc.). Potrai riattivarlo dalle Impostazioni una volta dentro con la password. Continuare?")) return;
+      TwoFactor.disableBiometric();
+      const rawSecretKey = localStorage.getItem(SECRET_KEY_STORAGE_KEY);
+      if (rawSecretKey) {
+        try {
+          const parsedSecretKey = JSON.parse(rawSecretKey);
+          if (parsedSecretKey && parsedSecretKey.encrypted) localStorage.removeItem(SECRET_KEY_STORAGE_KEY);
+        } catch (e) { /* formato legacy in chiaro: non dipende dalla biometria, lascialo */ }
+      }
+      // Annulla questo tentativo di verifica aggiuntiva: la biometria non è più registrata, quindi
+      // il prossimo tentativo di sblocco non la richiederà più (a meno che sia rimasto configurato
+      // anche il TOTP, nel qual caso verrà proposto quello).
+      cancelPostPasswordVerification();
+      UI.showToast("Sblocco biometrico disattivato su questo dispositivo. Riprova a sbloccare con la password.", "warning");
     });
   }
 
