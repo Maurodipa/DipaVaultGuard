@@ -17,28 +17,10 @@ export class GoogleDriveClient {
       this.tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: this.clientId,
         scope: 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
-        callback: async (tokenResponse) => {
+        callback: (tokenResponse) => {
           if (tokenResponse && tokenResponse.access_token) {
             this.accessToken = tokenResponse.access_token;
-            if (this._resolveAuth) {
-              if (this._fetchUserInfoOnAuth) {
-                try {
-                  await this.getUserInfo();
-                  this._resolveAuth(this.accessToken);
-                } catch (e) {
-                  if (this._rejectAuth) this._rejectAuth(e);
-                }
-              } else {
-                this._resolveAuth(this.accessToken);
-              }
-            }
-          } else {
-            if (this._rejectAuth) {
-              this._rejectAuth(new Error("Autenticazione/Refresh fallito"));
-            }
           }
-          this._resolveAuth = null;
-          this._rejectAuth = null;
         },
       });
       this.initialized = true;
@@ -50,6 +32,12 @@ export class GoogleDriveClient {
   }
 
   async authenticate() {
+    // Inizializzazione lazy: se non era pronto (caso raro, dato che app.js
+    // attende già che Google Identity Services sia caricato prima di questo
+    // punto), ci riprova in modo sincrono, SENZA attese asincrone: un
+    // eventuale "await" qui spezzerebbe il collegamento diretto con il
+    // click dell'utente e farebbe fallire silenziosamente il primo tentativo
+    // di autenticazione.
     if (!this.tokenClient) {
       this.init();
     }
@@ -60,9 +48,19 @@ export class GoogleDriveClient {
         return;
       }
       
-      this._resolveAuth = resolve;
-      this._rejectAuth = reject;
-      this._fetchUserInfoOnAuth = true;
+      this.tokenClient.callback = async (tokenResponse) => {
+        if (tokenResponse && tokenResponse.access_token) {
+          this.accessToken = tokenResponse.access_token;
+          try {
+            await this.getUserInfo();
+            resolve(this.accessToken);
+          } catch (e) {
+            reject(e);
+          }
+        } else {
+          reject(new Error("Autenticazione fallita"));
+        }
+      };
       
       this.tokenClient.requestAccessToken();
     });
@@ -72,9 +70,14 @@ export class GoogleDriveClient {
     return new Promise((resolve, reject) => {
       if (!this.tokenClient) reject(new Error("Client non inizializzato"));
       
-      this._resolveAuth = resolve;
-      this._rejectAuth = reject;
-      this._fetchUserInfoOnAuth = false;
+      this.tokenClient.callback = (tokenResponse) => {
+        if (tokenResponse && tokenResponse.access_token) {
+          this.accessToken = tokenResponse.access_token;
+          resolve(this.accessToken);
+        } else {
+          reject(new Error("Refresh fallito"));
+        }
+      };
       
       this.tokenClient.requestAccessToken({ prompt: '' });
     });
@@ -105,13 +108,12 @@ export class GoogleDriveClient {
   async findVaultFile(fileName = 'dipavault.bin') {
     if (!this.accessToken) throw new Error("Non autenticato");
     
-    // Cerca il file con il nome specificato o con i nomi alternativi usati dalle varie versioni
-    const query = encodeURIComponent(`(name='${fileName}' or name='dipavaultguard.enc' or name='dipavault.enc') and 'appDataFolder' in parents and trashed=false`);
-    const response = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&spaces=appDataFolder&orderBy=modifiedTime%20desc&fields=files(id,name,modifiedTime)`, {
+    const query = encodeURIComponent(`name='${fileName}' and 'appDataFolder' in parents and trashed=false`);
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&spaces=appDataFolder&fields=files(id,name,modifiedTime)`, {
       headers: { Authorization: `Bearer ${this.accessToken}` }
     });
     
-    if (!response.ok) throw new Error("Errore durante la ricerca del file su Google Drive");
+    if (!response.ok) throw new Error("Errore durante la ricerca del file");
     
     const data = await response.json();
     if (data.files && data.files.length > 0) {
