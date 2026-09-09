@@ -126,8 +126,7 @@ export class Vault {
     return this.getAllItems().filter(item => 
       item.name.toLowerCase().includes(q) || 
       (item.username && item.username.toLowerCase().includes(q)) || 
-      (item.url && item.url.toLowerCase().includes(q)) ||
-      (item.notes && item.notes.toLowerCase().includes(q))
+      (item.url && item.url.toLowerCase().includes(q))
     );
   }
 
@@ -179,7 +178,7 @@ export class Vault {
         let currentValue = '';
         for (let j = 0; j < lines[i].length; j++) {
             const char = lines[i][j];
-            if (char === '"' && lines[i][j+1] === '"' && inQuotes) {
+            if (char === '"' && lines[i][j+1] === '"') {
                 currentValue += '"';
                 j++;
             } else if (char === '"') {
