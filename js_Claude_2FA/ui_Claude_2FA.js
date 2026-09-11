@@ -136,6 +136,21 @@ export function initUI(vault, driveClient) {
       const modal = e.target.closest('.modal');
       if (modal) modal.classList.add('hidden');
     }
+
+    // Fullscreen toggle
+    if (e.target.closest('.btn-fullscreen-toggle')) {
+      const btn = e.target.closest('.btn-fullscreen-toggle');
+      const modalContent = btn.closest('.modal-content');
+      if (modalContent) {
+        modalContent.classList.toggle('modal-fullscreen');
+        const iconUse = btn.querySelector('use');
+        if (modalContent.classList.contains('modal-fullscreen')) {
+          iconUse.setAttribute('href', '#icon-minimize');
+        } else {
+          iconUse.setAttribute('href', '#icon-maximize');
+        }
+      }
+    }
     
     // Close generator modal specifically
     if (e.target.closest('.btn-close-modal-generator') || (e.target.classList.contains('modal-backdrop') && e.target.closest('#modal-password-generator'))) {
@@ -747,3 +762,5 @@ export function resetAutoLockTimer() {
   const mins = settings.autoLockMinutes !== undefined ? settings.autoLockMinutes : 5;
   startAutoLockTimer(mins);
 }
+
+

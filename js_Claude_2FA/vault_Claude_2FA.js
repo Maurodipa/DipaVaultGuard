@@ -126,7 +126,8 @@ export class Vault {
     return this.getAllItems().filter(item => 
       item.name.toLowerCase().includes(q) || 
       (item.username && item.username.toLowerCase().includes(q)) || 
-      (item.url && item.url.toLowerCase().includes(q))
+      (item.url && item.url.toLowerCase().includes(q)) ||
+      (item.notes && item.notes.toLowerCase().includes(q))
     );
   }
 
@@ -167,31 +168,54 @@ export class Vault {
   }
 
   importFromCSV(csvString) {
-    const lines = csvString.split('\n');
     let count = 0;
-    if (lines.length > 1) {
-      for (let i = 1; i < lines.length; i++) {
-        if (!lines[i].trim()) continue;
-        
-        const row = [];
-        let inQuotes = false;
-        let currentValue = '';
-        for (let j = 0; j < lines[i].length; j++) {
-            const char = lines[i][j];
-            if (char === '"' && lines[i][j+1] === '"') {
-                currentValue += '"';
-                j++;
-            } else if (char === '"') {
-                inQuotes = !inQuotes;
-            } else if (char === ',' && !inQuotes) {
-                row.push(currentValue);
-                currentValue = '';
-            } else {
-                currentValue += char;
-            }
+    const rows = [];
+    let currentRow = [];
+    let currentValue = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < csvString.length; i++) {
+      const char = csvString[i];
+      const nextChar = csvString[i + 1];
+      
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          // Escaped quote
+          currentValue += '"';
+          i++;
+        } else {
+          // Toggle quotes
+          inQuotes = !inQuotes;
         }
-        row.push(currentValue);
-
+      } else if (char === ',' && !inQuotes) {
+        currentRow.push(currentValue);
+        currentValue = '';
+      } else if ((char === '\n' || char === '\r') && !inQuotes) {
+        if (char === '\r' && nextChar === '\n') {
+          i++; // Skip \n if it's \r\n
+        }
+        currentRow.push(currentValue);
+        rows.push(currentRow);
+        currentRow = [];
+        currentValue = '';
+      } else {
+        currentValue += char;
+      }
+    }
+    
+    // Add the last value and row if there's no trailing newline
+    if (currentValue || currentRow.length > 0) {
+      currentRow.push(currentValue);
+      rows.push(currentRow);
+    }
+    
+    // Skip header row
+    if (rows.length > 1) {
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        // Skip empty rows
+        if (row.length === 1 && !row[0].trim()) continue;
+        
         if (row.length >= 4) {
           this.addItem({
             name: row[0] || 'Importato',

@@ -105,6 +105,7 @@ async function checkInitialState() {
   } else {
     // No local vault
     UI.showScreen('screen-setup');
+      document.getElementById('modal-settings').classList.add('hidden');
   }
 }
 
@@ -227,14 +228,18 @@ async function cacheSecretKeyLocally(secretKeyFormatted) {
       localStorage.setItem(SECRET_KEY_STORAGE_KEY, JSON.stringify({ encrypted: true, ...record }));
       return;
     } catch (e) {
-      console.warn("Impossibile cifrare la Secret Key con la biometria, non la metto in cache:", e);
+      console.warn("Impossibile cifrare la Secret Key con la biometria, procedo al salvataggio standard:", e);
     }
   }
-  // NON salvare la Secret Key in chiaro quando non c'è modo di proteggerla su questo
-  // dispositivo (nessuna biometria configurata, o cifratura fallita): farlo vanificherebbe lo
-  // scopo del 2SKD, perché da quel momento basterebbe la sola password per sbloccare il vault
-  // su questo dispositivo, con la Secret Key recuperata silenziosamente dalla cache. Meglio
-  // richiederla di nuovo ad ogni sblocco finché non c'è un fattore locale che la protegga.
+  
+  // Salva la Secret Key in chiaro nel localStorage. 
+  // Questo modello di sicurezza è lo stesso adottato da 1Password: la Secret Key
+  // salvata nel dispositivo serve a identificare questo browser come "dispositivo attendibile".
+  // Se un attaccante ottiene il database cifrato da Google Drive (server breach), 
+  // non ha la Secret Key (128 bit di entropia) e non può forzarlo offline.
+  // Se un attaccante ottiene l'accesso locale a questo browser, ottiene la Secret Key
+  // ma deve comunque conoscere la password principale dell'utente.
+  localStorage.setItem(SECRET_KEY_STORAGE_KEY, secretKeyFormatted);
 }
 
 // Se sul dispositivo è già salvata una Secret Key in chiaro (formato legacy, da prima che la
@@ -587,6 +592,7 @@ function setupEventListeners() {
 
     if (wasUnlocked || hadPendingVerification) {
       appPassword = null;
+      document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
       UI.showToast("Vault bloccato automaticamente per inattività", "info");
       UI.showScreen(wasPersisting ? 'screen-setup' : 'screen-login');
       document.getElementById('login-password').value = '';
@@ -630,6 +636,7 @@ function setupEventListeners() {
         console.error(err);
         UI.showToast("Errore durante la creazione", "error");
         UI.showScreen('screen-setup');
+      document.getElementById('modal-settings').classList.add('hidden');
       }
     });
   }
@@ -669,6 +676,7 @@ function setupEventListeners() {
           errorDiv.textContent = err.message || "Password principale errata";
         }
         errorDiv.classList.remove('hidden');
+        setTimeout(() => errorDiv.classList.add('hidden'), 6000);
         UI.showScreen('screen-login');
       }
     });
@@ -1142,6 +1150,7 @@ function setupEventListeners() {
       UI.initUI(appVault, driveClient); // re-init
       UI.showToast("Vault locale eliminato", "success");
       UI.showScreen('screen-setup');
+      document.getElementById('modal-settings').classList.add('hidden');
     });
   }
 
@@ -1401,6 +1410,11 @@ function setupEventListeners() {
         UI.showToast("Nessuna configurazione in corso", "error");
         return;
       }
+      if (!appVault.isUnlocked() || !appVault.vaultKeyRaw) {
+        document.getElementById('modal-totp-setup').classList.add('hidden');
+        UI.showToast("Tempo scaduto: il vault si è bloccato automaticamente per inattività. Riaccedi e riprova.", "error", 6000);
+        return;
+      }
       try {
         await TwoFactor.registerTOTP(pendingTotpSecret, code, appVault.vaultKeyRaw);
         TwoFactor.markFullPasswordAuth();
@@ -1467,16 +1481,19 @@ function setupEventListeners() {
               await unlockBlobWithPasswordAndVerification(pwd, remoteData, true);
             } catch (err) {
               console.error(err);
-              UI.showToast(err.message || "Password errata o file non valido", "error");
+              UI.showToast(err.message || "Password errata o file non valido", "error", 6000);
               UI.showScreen('screen-setup');
+      document.getElementById('modal-settings').classList.add('hidden');
             }
+          } else {
+            UI.showToast("Operazione annullata", "info");
           }
         } else {
-          UI.showToast("Nessun vault trovato su Google Drive", "warning");
+          UI.showToast("Nessun vault trovato su Google Drive. Assicurati di aver effettuato 'Sincronizza ora' dal dispositivo principale prima del ripristino.", "warning", 8000);
         }
       } catch (err) {
         console.error("Drive setup error:", err);
-        UI.showToast("Errore di connessione a Google Drive", "error");
+        UI.showToast("Errore di connessione a Google Drive: " + (err.message || "riprova"), "error", 6000);
       }
     });
   }
@@ -1540,12 +1557,22 @@ async function syncFromDrive(forceUnlockPrompt = false) {
               UI.showToast("Trovata su Drive una versione del vault senza la protezione Secret Key: sync automatico saltato per sicurezza. Usa 'Sincronizza ora' per forzare, se sei sicuro.", "warning");
             } else {
               // Replace local
+              const hadBiometric = TwoFactor.isBiometricRegistered();
+              const hadTotp = TwoFactor.isTOTPRegistered();
               appVault = tempVault;
               UI.initUI(appVault, driveClient);
               localStorage.setItem(LOCAL_STORAGE_KEY, arrayBufferToBase64(remoteData));
+              // Quando il contenuto del vault cambia da un'altra fonte, le registrazioni
+              // biometriche/TOTP locali non sono più valide per il nuovo vault: le resettiamo.
+              if (hadBiometric || hadTotp) { TwoFactor.clearAllSecondFactors(); }
               UI.renderItemList(appVault.getAllItems());
               UI.renderCategories(appVault.getCategories(), null);
               UI.showToast("Vault aggiornato da Drive", "info");
+              if (hadBiometric || hadTotp) {
+                setTimeout(() => {
+                  UI.showToast("Sblocco biometrico e/o TOTP sono stati disattivati per sicurezza (contenuto del vault cambiato da un altro dispositivo). Riconfigurali nelle Impostazioni.", "warning");
+                }, 1500);
+              }
             }
           } else if (localTime > remoteTime) {
             // Push local to remote
@@ -1555,6 +1582,10 @@ async function syncFromDrive(forceUnlockPrompt = false) {
           console.warn("Could not unlock remote vault with current password. Passwords might differ.");
         }
       }
+    } else if (appVault.isUnlocked()) {
+      // Se su Drive non esiste ancora il file del vault, effettua subito il primo
+      // caricamento della copia locale sbloccata, per non lasciare Drive vuoto.
+      await saveAndSync();
     }
     UI.updateSyncStatus('synced');
   } catch (err) {
