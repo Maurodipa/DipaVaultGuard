@@ -105,7 +105,6 @@ async function checkInitialState() {
   } else {
     // No local vault
     UI.showScreen('screen-setup');
-      document.getElementById('modal-settings').classList.add('hidden');
   }
 }
 
@@ -636,7 +635,6 @@ function setupEventListeners() {
         console.error(err);
         UI.showToast("Errore durante la creazione", "error");
         UI.showScreen('screen-setup');
-      document.getElementById('modal-settings').classList.add('hidden');
       }
     });
   }
@@ -1483,7 +1481,6 @@ function setupEventListeners() {
               console.error(err);
               UI.showToast(err.message || "Password errata o file non valido", "error", 6000);
               UI.showScreen('screen-setup');
-      document.getElementById('modal-settings').classList.add('hidden');
             }
           } else {
             UI.showToast("Operazione annullata", "info");

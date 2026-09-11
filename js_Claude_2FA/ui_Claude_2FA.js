@@ -97,9 +97,15 @@ let appDriveClient = null;
 let currentFilter = 'all';
 let autoLockTimerId = null;
 
+let _listenersRegistered = false;
+
 export function initUI(vault, driveClient) {
   appVault = vault;
   appDriveClient = driveClient;
+
+  // Only register event listeners once to avoid duplicate handlers
+  if (_listenersRegistered) return;
+  _listenersRegistered = true;
 
   // Global event delegation
   document.body.addEventListener('click', (e) => {
