@@ -367,22 +367,27 @@ export function initUI(vault, driveClient) {
   });
 
   document.getElementById('btn-import-csv-trigger').addEventListener('click', () => {
-    document.getElementById('file-import-csv').click();
+    const oldInput = document.getElementById('file-import-csv');
+    // Replace the input element to remove any stale/duplicate listeners
+    const newInput = oldInput.cloneNode(true);
+    oldInput.parentNode.replaceChild(newInput, oldInput);
+    newInput.addEventListener('change', handleCsvImport, { once: true });
+    newInput.click();
   });
 
-  document.getElementById('file-import-csv').addEventListener('change', (e) => {
+  function handleCsvImport(e) {
     const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const count = appVault.importFromCSV(ev.target.result);
-        showToast(STRINGS.importSuccess(count), 'success');
-        renderItemList(appVault.getAllItems());
-        document.dispatchEvent(new CustomEvent('vault-updated'));
-      };
-      reader.readAsText(file);
-    }
-  });
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const count = appVault.importFromCSV(ev.target.result);
+      showToast(STRINGS.importSuccess(count), 'success');
+      renderItemList(appVault.getAllItems());
+      document.dispatchEvent(new CustomEvent('vault-updated'));
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Reset so same file can be re-selected
+  }
 
   // Register activity listeners
   ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'].forEach(evt => {
