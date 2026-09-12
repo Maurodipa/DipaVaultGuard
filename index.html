@@ -794,6 +794,41 @@
             </div>
         </div>
     </div>
+    <!-- Modal Prompt (sostituisce window.prompt per compatibilità mobile) -->
+    <div id="modal-prompt" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" style="max-width:400px">
+            <div class="modal-header">
+                <h2 id="modal-prompt-title">Inserisci</h2>
+                <button class="btn-icon" id="btn-modal-prompt-close"><svg class="icon"><use href="#icon-close"></use></svg></button>
+            </div>
+            <div class="modal-body">
+                <p id="modal-prompt-message" class="text-sm mb-3"></p>
+                <div class="form-group">
+                    <input type="password" id="modal-prompt-input"
+                           autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                           data-lpignore="true" data-1p-ignore="true" data-form-type="other"
+                           class="input-block" style="font-size:1rem">
+                    <button type="button" class="btn-icon toggle-password" data-target="modal-prompt-input" style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%)">
+                        <svg class="icon"><use href="#icon-eye"></use></svg>
+                    </button>
+                </div>
+                <!-- Campo Secret Key (nascosto di default) -->
+                <div class="form-group hidden" id="modal-prompt-secretkey-group">
+                    <label for="modal-prompt-secretkey" class="text-sm text-muted">Secret Key</label>
+                    <input type="text" id="modal-prompt-secretkey"
+                           placeholder="DVG2-XXXXXX-XXXXXX-..."
+                           autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false"
+                           data-lpignore="true" data-1p-ignore="true" data-form-type="other"
+                           class="input-block" style="font-size:0.95rem; font-family:monospace; letter-spacing:1px">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="btn-modal-prompt-cancel">Annulla</button>
+                <button class="btn btn-primary" id="btn-modal-prompt-ok">Conferma</button>
+            </div>
+        </div>
+    </div>
 
 </body>
 </html>

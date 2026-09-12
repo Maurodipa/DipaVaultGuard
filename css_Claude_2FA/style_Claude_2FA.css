@@ -250,3 +250,7 @@ input[type="range"] { width: 100%; accent-color: var(--primary); }
     flex-direction: column;
 }
 
+
+/* Modal Prompt - input group con posizionamento relativo per il toggle password */
+#modal-prompt .form-group { position: relative; }
+#modal-prompt .input-block { width: 100%; padding-right: 2.5rem; }

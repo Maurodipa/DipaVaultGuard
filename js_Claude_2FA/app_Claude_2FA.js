@@ -53,6 +53,66 @@ function waitForGoogleIdentity(timeoutMs = 8000, intervalMs = 150) {
   });
 }
 
+// Sostituto mobile-friendly di window.prompt(): mostra un modal HTML con campi di input
+// dotati di autocorrect="off" e autocapitalize="off", evitando le storpiature silenziose
+// che la tastiera Android introduce nei dialog nativi prompt().
+// options.title         — titolo del modal
+// options.message       — testo esplicativo
+// options.inputType     — 'password' o 'text' (default: 'password')
+// options.showSecretKey — se true, mostra anche il campo Secret Key e ritorna { password, secretKey }
+function showPromptModal(options = {}) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('modal-prompt');
+    const titleEl = document.getElementById('modal-prompt-title');
+    const msgEl = document.getElementById('modal-prompt-message');
+    const inputEl = document.getElementById('modal-prompt-input');
+    const skGroup = document.getElementById('modal-prompt-secretkey-group');
+    const skInput = document.getElementById('modal-prompt-secretkey');
+    const btnOk = document.getElementById('btn-modal-prompt-ok');
+    const btnCancel = document.getElementById('btn-modal-prompt-cancel');
+    const btnClose = document.getElementById('btn-modal-prompt-close');
+
+    titleEl.textContent = options.title || 'Inserisci';
+    msgEl.textContent = options.message || '';
+    inputEl.type = options.inputType || 'password';
+    inputEl.value = '';
+    inputEl.placeholder = options.placeholder || '';
+    if (skInput) skInput.value = '';
+    if (skGroup) skGroup.classList.toggle('hidden', !options.showSecretKey);
+
+    modal.classList.remove('hidden');
+    setTimeout(() => inputEl.focus(), 100);
+
+    function cleanup() {
+      btnOk.removeEventListener('click', onOk);
+      btnCancel.removeEventListener('click', onCancel);
+      btnClose.removeEventListener('click', onCancel);
+      inputEl.removeEventListener('keydown', onKeydown);
+      modal.classList.add('hidden');
+    }
+    function onOk() {
+      cleanup();
+      if (options.showSecretKey) {
+        resolve({ password: inputEl.value, secretKey: skInput ? skInput.value : '' });
+      } else {
+        resolve(inputEl.value);
+      }
+    }
+    function onCancel() {
+      cleanup();
+      resolve(null);
+    }
+    function onKeydown(e) {
+      if (e.key === 'Enter') { e.preventDefault(); onOk(); }
+      if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+    }
+    btnOk.addEventListener('click', onOk);
+    btnCancel.addEventListener('click', onCancel);
+    btnClose.addEventListener('click', onCancel);
+    inputEl.addEventListener('keydown', onKeydown);
+  });
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   // Load settings
   const storedSettings = localStorage.getItem(SETTINGS_KEY);
@@ -281,12 +341,17 @@ async function getSecretKeyRawForBlob(blob) {
   }
   if (cached) return parseSecretKey(cached);
 
-  const entered = prompt("Questo vault richiede anche la Secret Key (oltre alla password) — l'hai salvata quando hai attivato la protezione 2SKD:");
+  const entered = await showPromptModal({
+    title: 'Secret Key richiesta',
+    message: "Questo vault richiede anche la Secret Key (oltre alla password). L'hai salvata quando hai attivato la protezione 2SKD.",
+    inputType: 'text',
+    placeholder: 'DVG2-XXXXXX-XXXXXX-...'
+  });
   if (!entered || !entered.trim()) {
     throw new Error("Secret Key necessaria per sbloccare questo vault.");
   }
   const trimmed = entered.trim();
-  await cacheSecretKeyLocally(trimmed); // ri-cifra con la registrazione biometrica attualmente attiva (se presente)
+  await cacheSecretKeyLocally(trimmed);
   return parseSecretKey(trimmed);
 }
 
@@ -1468,7 +1533,11 @@ function setupEventListeners() {
           currentVaultFileId = file.id;
           const remoteData = await driveClient.readVaultFile(file.id);
           
-          const pwd = prompt("Inserisci la password principale del vault salvato su Google Drive:");
+          const pwd = await showPromptModal({
+            title: 'Password principale',
+            message: 'Inserisci la password principale del vault salvato su Google Drive:',
+            inputType: 'password'
+          });
           if (pwd) {
             UI.showScreen('screen-loading');
             try {
@@ -1507,7 +1576,11 @@ async function syncFromDrive(forceUnlockPrompt = false) {
       
       if (forceUnlockPrompt && !appVault.isUnlocked()) {
         // Just downloaded, need password to unlock
-        const pwd = prompt("Inserisci la password principale per il vault di Drive:");
+        const pwd = await showPromptModal({
+          title: 'Password principale',
+          message: 'Inserisci la password principale per il vault di Drive:',
+          inputType: 'password'
+        });
         if (pwd) {
           try {
             // Stessa protezione del login normale: se serve una verifica aggiuntiva (locale o
