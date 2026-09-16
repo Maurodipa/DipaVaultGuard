@@ -424,7 +424,11 @@ export function showToast(message, type = 'info', durationMs = null) {
 
 function getFaviconUrl(urlStr) {
   try {
-    const url = new URL(urlStr);
+    let parseUrl = urlStr.trim();
+    if (!/^https?:\/\//i.test(parseUrl)) {
+      parseUrl = 'https://' + parseUrl;
+    }
+    const url = new URL(parseUrl);
     return `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=32`;
   } catch (e) {
     return '';
@@ -524,7 +528,11 @@ export function openItemView(item) {
   
   const urlEl = document.getElementById('view-item-url');
   if (item.url) {
-    urlEl.href = item.url;
+    let linkHref = item.url.trim();
+    if (!/^https?:\/\//i.test(linkHref)) {
+      linkHref = 'https://' + linkHref;
+    }
+    urlEl.href = linkHref;
     urlEl.textContent = item.url;
     urlEl.parentElement.classList.remove('hidden');
   } else {
@@ -770,7 +778,7 @@ export function startAutoLockTimer(minutes) {
 
 export function resetAutoLockTimer() {
   const settings = JSON.parse(localStorage.getItem('dipavaultguard_settings') || '{}');
-  const mins = settings.autoLockMinutes !== undefined ? settings.autoLockMinutes : 5;
+  const mins = settings.autoLockMinutes !== undefined ? settings.autoLockMinutes : 10;
   startAutoLockTimer(mins);
 }
 

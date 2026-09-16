@@ -29,7 +29,7 @@ const CLIENT_ID_KEY = 'dipavaultguard_client_id';
 const DEFAULT_GOOGLE_CLIENT_ID = '751284166814-p2u156n0btpstlg1anlnlhl8nlia0pi7.apps.googleusercontent.com';
 
 let settings = {
-  autoLockMinutes: 5,
+  autoLockMinutes: 10,
   googleClientId: ''
 };
 
