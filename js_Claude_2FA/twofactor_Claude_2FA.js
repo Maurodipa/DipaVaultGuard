@@ -282,17 +282,23 @@ async function evalPrfWithAssertion(credentialRawId, salt = PRF_SALT) {
   };
   
   if (credentialRawId) {
-    // BUGFIX ANDROID CHROME: il bridge JNI di Android a volte va in crash silente (hang)
-    // se passiamo un Uint8Array invece di un ArrayBuffer puro come ID.
-    // Convertiamo esplicitamente l'Uint8Array in ArrayBuffer.
-    let idBuffer = credentialRawId;
-    if (credentialRawId instanceof Uint8Array) {
-      idBuffer = credentialRawId.buffer.slice(
-        credentialRawId.byteOffset, 
-        credentialRawId.byteOffset + credentialRawId.byteLength
-      );
+    // BUGFIX ANDROID CHROME: il bridge JNI di Android va in crash silente (hang)
+    // se passiamo allowCredentials assieme all'estensione PRF. 
+    // Su Android omettiamo allowCredentials forzando la tendina "Scegli passkey"
+    // che miracolosamente aggira il bug di sistema.
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    if (!isAndroid) {
+      let idBuffer = credentialRawId;
+      if (credentialRawId instanceof Uint8Array) {
+        idBuffer = credentialRawId.buffer.slice(
+          credentialRawId.byteOffset, 
+          credentialRawId.byteOffset + credentialRawId.byteLength
+        );
+      }
+      req.publicKey.allowCredentials = [{ id: idBuffer, type: 'public-key' }];
+    } else {
+      debugLog('Android rilevato: ometto allowCredentials per evitare l\'hang di sistema.');
     }
-    req.publicKey.allowCredentials = [{ id: idBuffer, type: 'public-key' }];
   }
   
   debugLog('Chiamata a get() con rpId: ' + req.publicKey.rpId);
