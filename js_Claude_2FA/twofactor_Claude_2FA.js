@@ -25,6 +25,7 @@ import { aesEncryptRaw, aesDecryptRaw, hkdfDeriveBits } from './crypto_Claude_2F
 
 const BIOMETRIC_KEY = 'dipavaultguard_biometric';
 const TOTP_KEY = 'dipavaultguard_totp';
+let cachedPrfSecretKey = null; // Cache temporanea per bypassare bug Android
 
 // --- DEBUG OVERLAY ---
 function debugLog(msg) {
@@ -200,7 +201,14 @@ export async function registerBiometric(vaultKeyRaw) {
           residentKey: 'preferred'
         },
         timeout: 60000,
-        extensions: { prf: { eval: { first: PRF_SALT } } }
+        extensions: { 
+          prf: { 
+            eval: { 
+              first: PRF_SALT,
+              second: PRF_SALT_SECRET_KEY
+            } 
+          } 
+        }
       }
     });
     debugLog('create() successo!');
@@ -225,6 +233,10 @@ export async function registerBiometric(vaultKeyRaw) {
   if (createExt.prf.results && createExt.prf.results.first) {
     debugLog('Risultati PRF ricevuti direttamente da create()! Salto get().');
     prfBits = new Uint8Array(createExt.prf.results.first);
+    if (createExt.prf.results.second) {
+      cachedPrfSecretKey = new Uint8Array(createExt.prf.results.second);
+      debugLog('Cache PRF Secret Key impostata con successo.');
+    }
   } else {
     debugLog('Risultati PRF non presenti, tento get()...');
     debugLog('Inizio Kimi polling workaround...');
@@ -319,13 +331,20 @@ export async function encryptSecretKeyWithBiometric(secretKeyFormatted) {
 
   const credentialId = base64ToBuffer(record.credentialId);
 
-  debugLog('Pausa di 1000ms prima di cifrare la Secret Key (Android workaround)...');
-  await new Promise(r => setTimeout(r, 1000));
+  let prfBits;
+  if (cachedPrfSecretKey) {
+    debugLog('Uso cache PRF per la Secret Key per bypassare bug Android!');
+    prfBits = cachedPrfSecretKey;
+    cachedPrfSecretKey = null;
+  } else {
+    debugLog('Pausa di 1000ms prima di cifrare la Secret Key (Android workaround)...');
+    await new Promise(r => setTimeout(r, 1000));
 
-  debugLog('Chiamata a evalPrfWithAssertion per la Secret Key...');
-  const prfBits = await evalPrfWithAssertion(credentialId, PRF_SALT_SECRET_KEY);
-  if (!prfBits) throw new Error('Verifica biometrica non riuscita o annullata.');
-  debugLog('evalPrfWithAssertion per Secret Key completato!');
+    debugLog('Chiamata a evalPrfWithAssertion per la Secret Key...');
+    prfBits = await evalPrfWithAssertion(credentialId, PRF_SALT_SECRET_KEY);
+    if (!prfBits) throw new Error('Verifica biometrica non riuscita o annullata.');
+    debugLog('evalPrfWithAssertion per Secret Key completato!');
+  }
 
   const wrappingKeyRaw = await hkdfDeriveBits(prfBits, 'dipavaultguard-secretkey-wrap');
   const { iv, ciphertext } = await aesEncryptRaw(wrappingKeyRaw, new TextEncoder().encode(secretKeyFormatted));
