@@ -1,19 +1,19 @@
-﻿// Modulo di secondo fattore (2FA) per DipaVaultGuard.
+// Modulo di secondo fattore (2FA) per DipaVaultGuard.
 //
-// PRINCIPIO CHIAVE: questo NON Ã¨ un semplice "cancello" a livello di interfaccia.
+// PRINCIPIO CHIAVE: questo NON è un semplice "cancello" a livello di interfaccia.
 // La vaultKey (la chiave che cifra davvero i dati del vault) viene protetta con una copia
 // aggiuntiva, cifrata con una chiave derivata dal secondo fattore:
 //   - Biometria: WebAuthn con estensione PRF. Il segreto vive nell'hardware sicuro del
-//     dispositivo (es. StrongBox/TEE su Android) e non Ã¨ mai estraibile da JavaScript:
-//     solo il suo OUTPUT (dato un determinato input) puÃ² essere richiesto, e solo dopo una
-//     verifica utente riuscita (impronta/volto) ogni volta. Questo Ã¨ un fattore crittografico
+//     dispositivo (es. StrongBox/TEE su Android) e non è mai estraibile da JavaScript:
+//     solo il suo OUTPUT (dato un determinato input) può essere richiesto, e solo dopo una
+//     verifica utente riuscita (impronta/volto) ogni volta. Questo è un fattore crittografico
 //     reale.
 //   - TOTP (fallback per dispositivi senza supporto PRF): qui il segreto condiviso deve
 //     necessariamente essere presente anche in questo browser (altrimenti non potremmo
-//     verificare il codice a 6 cifre), quindi rispetto alla biometria Ã¨ una protezione piÃ¹
+//     verificare il codice a 6 cifre), quindi rispetto alla biometria è una protezione più
 //     debole se qualcuno riuscisse a estrarre i dati salvati in questo browser. Resta
-//     comunque un secondo fattore reale, sia perchÃ© la chiave del vault viene wrappata con
-//     esso (non Ã¨ solo un controllo a schermo), sia perchÃ© protegge dall'accesso "casuale"
+//     comunque un secondo fattore reale, sia perché la chiave del vault viene wrappata con
+//     esso (non è solo un controllo a schermo), sia perché protegge dall'accesso "casuale"
 //     (es. telefono sbloccato trovato da terzi) e richiede il possesso dell'app authenticator
 //     abbinata.
 //
@@ -29,12 +29,12 @@ const LAST_FULL_AUTH_KEY = 'dipavaultguard_last_full_auth';
 const MAX_DAYS_WITHOUT_PASSWORD = 7;
 
 const RP_NAME = 'DipaVaultGuard';
-// Salt fisso per la valutazione PRF: serve solo a separare il contesto d'uso, non Ã¨ un segreto.
+// Salt fisso per la valutazione PRF: serve solo a separare il contesto d'uso, non è un segreto.
 const PRF_SALT = new TextEncoder().encode('dipavaultguard-prf-salt-v1');
-// Salt PRF distinto, usato SOLO per cifrare la Secret Key del 2SKD in localStorage â€” mai per
-// la vaultKey. Riusa la STESSA credenziale biometrica giÃ  registrata (nessuna nuova
-// registrazione richiesta), ma con un salt diverso il valore PRF ottenuto Ã¨ completamente
-// diverso e indipendente da quello usato per la vaultKey (proprietÃ  standard delle PRF).
+// Salt PRF distinto, usato SOLO per cifrare la Secret Key del 2SKD in localStorage — mai per
+// la vaultKey. Riusa la STESSA credenziale biometrica già registrata (nessuna nuova
+// registrazione richiesta), ma con un salt diverso il valore PRF ottenuto è completamente
+// diverso e indipendente da quello usato per la vaultKey (proprietà standard delle PRF).
 const PRF_SALT_SECRET_KEY = new TextEncoder().encode('dipavaultguard-prf-salt-secretkey-v1');
 
 // ---------------------------------------------------------------------------
@@ -70,8 +70,8 @@ export function isTOTPRegistered() {
   return !!localStorage.getItem(TOTP_KEY);
 }
 
-// Un metodo rapido (biometria o TOTP) Ã¨ utilizzabile ORA solo se registrato E se non sono
-// passati piÃ¹ di MAX_DAYS_WITHOUT_PASSWORD giorni dall'ultima volta che Ã¨ stata digitata
+// Un metodo rapido (biometria o TOTP) è utilizzabile ORA solo se registrato E se non sono
+// passati più di MAX_DAYS_WITHOUT_PASSWORD giorni dall'ultima volta che è stata digitata
 // la password completa.
 export function canUseQuickUnlock() {
   return (isBiometricRegistered() || isTOTPRegistered()) && !isFullPasswordAuthRequired();
@@ -85,7 +85,7 @@ export function disableTOTP() {
   localStorage.removeItem(TOTP_KEY);
 }
 
-// Da chiamare quando la vaultKey cambia in modo che le vecchie registrazioni non abbiano piÃ¹
+// Da chiamare quando la vaultKey cambia in modo che le vecchie registrazioni non abbiano più
 // senso (es. reset completo del vault locale).
 export function clearAllSecondFactors() {
   localStorage.removeItem(BIOMETRIC_KEY);
@@ -113,7 +113,7 @@ export async function isPlatformAuthenticatorAvailable() {
 // dovrebbe proporre la configurazione TOTP come alternativa).
 export async function registerBiometric(vaultKeyRaw) {
   if (!window.PublicKeyCredential) {
-    throw new Error('WebAuthn non Ã¨ supportato su questo browser.');
+    throw new Error('WebAuthn non è supportato su questo browser.');
   }
 
   const challenge = crypto.getRandomValues(new Uint8Array(32));
@@ -152,7 +152,7 @@ export async function registerBiometric(vaultKeyRaw) {
     throw new Error('PRF_UNSUPPORTED');
   }
 
-  // Su molti browser/dispositivi il valore PRF non Ã¨ disponibile subito in fase di
+  // Su molti browser/dispositivi il valore PRF non è disponibile subito in fase di
   // registrazione: va richiesto con un'asserzione immediatamente successiva.
   const prfBits = await evalPrfWithAssertion(credential.rawId);
   if (!prfBits) {
@@ -212,16 +212,16 @@ export async function unlockWithBiometric() {
 // Cifratura della Secret Key (2SKD) tramite biometria
 // ---------------------------------------------------------------------------
 // La Secret Key va comunque tenuta in locale per non doverla ridigitare a ogni sblocco, ma
-// non c'Ã¨ motivo che sieda in localStorage in chiaro se questo dispositivo ha giÃ  una
+// non c'è motivo che sieda in localStorage in chiaro se questo dispositivo ha già una
 // credenziale biometrica: la cifriamo con una chiave derivata dallo stesso meccanismo PRF
-// usato per la vaultKey (stessa credenziale, salt diverso), cosÃ¬ un accesso diretto a
-// localStorage (es. DevTools) non basta piÃ¹ a leggerla: serve anche il sensore biometrico.
+// usato per la vaultKey (stessa credenziale, salt diverso), così un accesso diretto a
+// localStorage (es. DevTools) non basta più a leggerla: serve anche il sensore biometrico.
 
 export async function isBiometricEncryptionAvailable() {
   return isBiometricRegistered();
 }
 
-// Cifra la stringa della Secret Key. Richiede che la biometria sia giÃ  registrata su questo
+// Cifra la stringa della Secret Key. Richiede che la biometria sia già registrata su questo
 // dispositivo (altrimenti lancia un errore: il chiamante dovrebbe salvarla in chiaro come
 // ripiego in quel caso). Chiede una verifica biometrica per calcolare la chiave di cifratura.
 export async function encryptSecretKeyWithBiometric(secretKeyFormatted) {
@@ -260,7 +260,7 @@ export async function decryptSecretKeyWithBiometric(encryptedRecord) {
 }
 
 // ---------------------------------------------------------------------------
-// TOTP (fallback per dispositivi senza supporto PRF) â€” RFC 6238 / RFC 4226
+// TOTP (fallback per dispositivi senza supporto PRF) — RFC 6238 / RFC 4226
 // ---------------------------------------------------------------------------
 
 const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -333,7 +333,7 @@ async function totpAt(secretBase32, forTimeMs, timeStepSeconds = 30) {
   return hotp(secretBytes, counter);
 }
 
-// Verifica un codice a 6 cifre tollerando una finestra di Â±30s per compensare piccoli
+// Verifica un codice a 6 cifre tollerando una finestra di ±30s per compensare piccoli
 // disallineamenti dell'orologio tra dispositivo e app authenticator.
 export async function verifyTOTPCode(secretBase32, code, windowSteps = 1) {
   const cleanCode = (code || '').replace(/\s/g, '');
@@ -390,9 +390,9 @@ export async function unlockWithTOTP(code) {
   return vaultKeyRaw;
 }
 
-// Verifica un codice TOTP contro il segreto giÃ  registrato su questo dispositivo, SENZA
+// Verifica un codice TOTP contro il segreto già registrato su questo dispositivo, SENZA
 // svincolare la vaultKey. Usata come verifica aggiuntiva pura (es. dopo il percorso password,
-// quando la vaultKey Ã¨ giÃ  nota per altra via e serve solo confermare il possesso dell'app
+// quando la vaultKey è già nota per altra via e serve solo confermare il possesso dell'app
 // authenticator).
 export async function verifyRegisteredTOTPCode(code) {
   const recordRaw = localStorage.getItem(TOTP_KEY);
@@ -420,4 +420,3 @@ function base64ToBuffer(base64) {
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
 }
-
