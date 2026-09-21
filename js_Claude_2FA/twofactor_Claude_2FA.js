@@ -29,28 +29,6 @@ let cachedPrfSecretKey = null; // Cache temporanea per bypassare bug Android
 
 // --- DEBUG OVERLAY ---
 export function debugLog(msg) {
-  let div = document.getElementById('debug-log-overlay');
-  if (!div) {
-    div = document.createElement('div');
-    div.id = 'debug-log-overlay';
-    div.style.position = 'fixed';
-    div.style.top = '0';
-    div.style.left = '0';
-    div.style.width = '100%';
-    div.style.height = '40%';
-    div.style.backgroundColor = 'rgba(0,0,0,0.85)';
-    div.style.color = 'lime';
-    div.style.zIndex = '99999';
-    div.style.overflowY = 'auto';
-    div.style.fontSize = '12px';
-    div.style.padding = '10px';
-    div.style.pointerEvents = 'none';
-    document.body.appendChild(div);
-  }
-  const time = new Date().toISOString().split('T')[1].slice(0, -1);
-  div.innerHTML += '<div>[' + time + '] ' + msg + '</div>';
-  div.scrollTop = div.scrollHeight;
-  console.log('[DEBUG]', msg);
 }
 
 // --- WAIT FOR WEBAUTHN IDLE (KIMI METHOD) ---
