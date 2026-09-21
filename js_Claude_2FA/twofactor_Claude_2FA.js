@@ -272,14 +272,21 @@ export async function registerBiometric(vaultKeyRaw) {
 }
 
 async function evalPrfWithAssertion(credentialRawId, salt = PRF_SALT) {
-  const assertion = await navigator.credentials.get({
+  const req = {
     publicKey: {
+      rpId: window.location.hostname,
       challenge: crypto.getRandomValues(new Uint8Array(32)),
-      allowCredentials: [{ id: credentialRawId, type: 'public-key' }],
       userVerification: 'required',
       extensions: { prf: { eval: { first: salt } } }
     }
-  });
+  };
+  // Come test estremo per Android, proviamo a NON passare allowCredentials
+  // in modo da forzare la schermata di selezione "Scegli una passkey" di Android.
+  // Se con questo fix il popup appare, significa che il problema era l'ID della credenziale!
+  // Se non appare, il problema è l'estensione PRF su Android.
+  
+  debugLog('Chiamata a get() con rpId: ' + req.publicKey.rpId);
+  const assertion = await navigator.credentials.get(req);
   if (!assertion) return null;
   const ext = assertion.getClientExtensionResults ? assertion.getClientExtensionResults() : {};
   const results = ext && ext.prf && ext.prf.results;
