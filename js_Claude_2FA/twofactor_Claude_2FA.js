@@ -154,7 +154,17 @@ export async function registerBiometric(vaultKeyRaw) {
 
   // Su molti browser/dispositivi il valore PRF non è disponibile subito in fase di
   // registrazione: va richiesto con un'asserzione immediatamente successiva.
-  const prfBits = await evalPrfWithAssertion(credential.rawId);
+  // Aggiungiamo un ritardo di 1000ms perché Android a volte lascia la UI appesa
+  // e la richiesta successiva fallisce con "A request is already pending".
+  await new Promise(r => setTimeout(r, 1000));
+  
+  let prfBits;
+  try {
+    prfBits = await evalPrfWithAssertion(credential.rawId);
+  } catch (e) {
+    throw new Error('Errore durante valutazione PRF: ' + (e.name || 'Sconosciuto') + ' - ' + (e.message || ''));
+  }
+  
   if (!prfBits) {
     throw new Error('PRF_UNSUPPORTED');
   }
