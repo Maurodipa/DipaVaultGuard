@@ -318,8 +318,14 @@ export async function encryptSecretKeyWithBiometric(secretKeyFormatted) {
   const record = JSON.parse(recordRaw);
 
   const credentialId = base64ToBuffer(record.credentialId);
+
+  debugLog('Pausa di 1000ms prima di cifrare la Secret Key (Android workaround)...');
+  await new Promise(r => setTimeout(r, 1000));
+
+  debugLog('Chiamata a evalPrfWithAssertion per la Secret Key...');
   const prfBits = await evalPrfWithAssertion(credentialId, PRF_SALT_SECRET_KEY);
   if (!prfBits) throw new Error('Verifica biometrica non riuscita o annullata.');
+  debugLog('evalPrfWithAssertion per Secret Key completato!');
 
   const wrappingKeyRaw = await hkdfDeriveBits(prfBits, 'dipavaultguard-secretkey-wrap');
   const { iv, ciphertext } = await aesEncryptRaw(wrappingKeyRaw, new TextEncoder().encode(secretKeyFormatted));
