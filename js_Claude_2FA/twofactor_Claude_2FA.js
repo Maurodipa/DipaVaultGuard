@@ -280,10 +280,20 @@ async function evalPrfWithAssertion(credentialRawId, salt = PRF_SALT) {
       extensions: { prf: { eval: { first: salt } } }
     }
   };
-  // Come test estremo per Android, proviamo a NON passare allowCredentials
-  // in modo da forzare la schermata di selezione "Scegli una passkey" di Android.
-  // Se con questo fix il popup appare, significa che il problema era l'ID della credenziale!
-  // Se non appare, il problema è l'estensione PRF su Android.
+  
+  if (credentialRawId) {
+    // BUGFIX ANDROID CHROME: il bridge JNI di Android a volte va in crash silente (hang)
+    // se passiamo un Uint8Array invece di un ArrayBuffer puro come ID.
+    // Convertiamo esplicitamente l'Uint8Array in ArrayBuffer.
+    let idBuffer = credentialRawId;
+    if (credentialRawId instanceof Uint8Array) {
+      idBuffer = credentialRawId.buffer.slice(
+        credentialRawId.byteOffset, 
+        credentialRawId.byteOffset + credentialRawId.byteLength
+      );
+    }
+    req.publicKey.allowCredentials = [{ id: idBuffer, type: 'public-key' }];
+  }
   
   debugLog('Chiamata a get() con rpId: ' + req.publicKey.rpId);
   const assertion = await navigator.credentials.get(req);
