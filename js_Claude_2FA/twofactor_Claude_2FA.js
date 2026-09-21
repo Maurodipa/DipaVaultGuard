@@ -323,8 +323,9 @@ export async function unlockWithBiometric() {
   const credentialId = base64ToBuffer(record.credentialId);
   debugLog('Chiamata a evalPrfWithAssertion per sblocco vault...');
   
-  // Aggiungiamo un timeout di sicurezza di 10 secondi per vedere se la promise pende per sempre
-  const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_GET')), 10000));
+  // Aumentiamo il timeout a 60 secondi, perché se appare la tendina l'utente ha bisogno di tempo
+  // per scegliere la passkey e scansionare l'impronta!
+  const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_GET')), 60000));
   
   let prfBits;
   try {
