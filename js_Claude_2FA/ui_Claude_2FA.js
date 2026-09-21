@@ -370,7 +370,7 @@ export function initUI(vault, driveClient) {
     // Mostriamo un popup descrittivo prima di aprire il selettore di file
     const msg = "L'importazione mapperà le colonne in base all'intestazione (prima riga).\n\n" +
                 "Colonne supportate: name, url, username, password, notes, category\n\n" +
-                "Se una riga non ha il campo 'name', verrà utilizzato lo 'username'.\n" +
+                "Se una riga non ha il campo 'name', verrà utilizzato lo 'username' (se assente, resterà vuoto).\n" +
                 "Procedere con l'importazione?";
     if (!confirm(msg)) return;
 
@@ -466,7 +466,7 @@ export function renderItemList(items) {
       card.className = 'item-card';
       
       const iconUrl = item.url ? getFaviconUrl(item.url) : '';
-      const initial = item.name.charAt(0).toUpperCase();
+      const initial = item.name ? item.name.charAt(0).toUpperCase() : '?';
       
       card.innerHTML = `
         ${iconUrl 

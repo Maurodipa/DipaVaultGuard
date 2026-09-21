@@ -83,7 +83,7 @@ Amazon,https://amazon.it,mario.rossi@email.it,Pass!word456,,Shopping
 ```
 
 **Regole di formattazione:**
-- La colonna `name` è il titolo principale. Se una riga non ha il nome, verrà utilizzato il suo `username` (o l'`url`).
+- La colonna `name` è il titolo principale. Se una riga non ha il nome, verrà utilizzato il suo `username`. Se manca anche lo username, il campo nome rimarrà in bianco.
 - L'importazione legge la prima riga per capire l'ordine delle colonne (puoi anche usare nomi come 'nome', 'sito', 'utente', 'pwd').
 - Le altre colonne sono opzionali.
 - Se i valori contengono virgole (es. una password o una nota con la virgola), racchiudi l'intero valore tra doppie virgolette `"..."`.

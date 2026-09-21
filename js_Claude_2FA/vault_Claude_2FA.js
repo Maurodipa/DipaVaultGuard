@@ -236,13 +236,13 @@ export class Vault {
         let notes = idxNotes >= 0 ? row[idxNotes] : '';
         let category = idxCategory >= 0 ? row[idxCategory] : '';
 
-        // Se manca il nome, usiamo lo username (o l'url, o 'Senza nome')
+        // Se manca il nome, usiamo lo username. Se manca anche quello, lasciamo in bianco.
         if (!name || !name.trim()) {
-          name = username || url || 'Senza nome';
+          name = username || '';
         }
 
         // Importiamo solo se c'è almeno qualcosa di utile
-        if (name || password || username) {
+        if (name || password || username || url || notes) {
           this.addItem({
             name: name,
             url: url,
