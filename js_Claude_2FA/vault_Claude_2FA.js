@@ -209,21 +209,47 @@ export class Vault {
       rows.push(currentRow);
     }
     
-    // Skip header row
+    // Parsing dell'header per mappare dinamicamente le colonne
     if (rows.length > 1) {
+      const header = rows[0].map(h => h ? h.trim().toLowerCase() : '');
+      
+      // Cerchiamo gli indici flessibili (se l'utente usa nomi italiani o inglesi)
+      const findIdx = (keywords) => {
+        return header.findIndex(h => keywords.some(k => h.includes(k)));
+      };
+      
+      const idxName = findIdx(['name', 'nome', 'titolo', 'title']);
+      const idxUrl = findIdx(['url', 'sito', 'website']);
+      const idxUsername = findIdx(['user', 'utente', 'email', 'login']);
+      const idxPassword = findIdx(['pass', 'pwd']);
+      const idxNotes = findIdx(['note']);
+      const idxCategory = findIdx(['cat', 'group', 'folder']);
+
       for (let i = 1; i < rows.length; i++) {
         const row = rows[i];
-        // Skip empty rows
-        if (row.length === 1 && !row[0].trim()) continue;
+        if (row.length === 1 && !row[0].trim()) continue; // Salta righe vuote
         
-        if (row.length >= 4) {
+        let name = idxName >= 0 ? row[idxName] : '';
+        let url = idxUrl >= 0 ? row[idxUrl] : '';
+        let username = idxUsername >= 0 ? row[idxUsername] : '';
+        let password = idxPassword >= 0 ? row[idxPassword] : '';
+        let notes = idxNotes >= 0 ? row[idxNotes] : '';
+        let category = idxCategory >= 0 ? row[idxCategory] : '';
+
+        // Se manca il nome, usiamo lo username (o l'url, o 'Senza nome')
+        if (!name || !name.trim()) {
+          name = username || url || 'Senza nome';
+        }
+
+        // Importiamo solo se c'è almeno qualcosa di utile
+        if (name || password || username) {
           this.addItem({
-            name: row[0] || 'Importato',
-            url: row[1] || '',
-            username: row[2] || '',
-            password: row[3] || '',
-            notes: row[4] || '',
-            category: row[5] || '',
+            name: name,
+            url: url,
+            username: username,
+            password: password,
+            notes: notes,
+            category: category,
             favorite: false
           });
           count++;

@@ -368,9 +368,9 @@ export function initUI(vault, driveClient) {
 
   document.getElementById('btn-import-csv-trigger').addEventListener('click', () => {
     // Mostriamo un popup descrittivo prima di aprire il selettore di file
-    const msg = "Il file CSV deve avere la seguente struttura esatta di colonne:\n\n" +
-                "name, url, username, password, notes, category\n\n" +
-                "Le righe senza il campo 'name' verranno ignorate.\n" +
+    const msg = "L'importazione mapperà le colonne in base all'intestazione (prima riga).\n\n" +
+                "Colonne supportate: name, url, username, password, notes, category\n\n" +
+                "Se una riga non ha il campo 'name', verrà utilizzato lo 'username'.\n" +
                 "Procedere con l'importazione?";
     if (!confirm(msg)) return;
 
