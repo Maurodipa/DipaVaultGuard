@@ -200,7 +200,7 @@ export async function registerBiometric(vaultKeyRaw) {
           residentKey: 'preferred'
         },
         timeout: 60000,
-        extensions: { prf: {} }
+        extensions: { prf: { eval: { first: PRF_SALT } } }
       }
     });
     debugLog('create() successo!');
@@ -220,17 +220,24 @@ export async function registerBiometric(vaultKeyRaw) {
     throw new Error('PRF_UNSUPPORTED');
   }
 
-  debugLog('Inizio Kimi polling workaround...');
-  await waitForWebAuthnIdle();
-  
+  debugLog('Controllo se PRF è stato valutato in create()...');
   let prfBits;
-  try {
-    debugLog('Chiamata a evalPrfWithAssertion()...');
-    prfBits = await evalPrfWithAssertion(credential.rawId);
-    debugLog('evalPrfWithAssertion successo!');
-  } catch (e) {
-    debugLog('Errore evalPrfWithAssertion: ' + e.name + ' - ' + e.message);
-    throw new Error('Errore durante valutazione PRF: ' + (e.name || 'Sconosciuto') + ' - ' + (e.message || ''));
+  if (createExt.prf.results && createExt.prf.results.first) {
+    debugLog('Risultati PRF ricevuti direttamente da create()! Salto get().');
+    prfBits = new Uint8Array(createExt.prf.results.first);
+  } else {
+    debugLog('Risultati PRF non presenti, tento get()...');
+    debugLog('Inizio Kimi polling workaround...');
+    await waitForWebAuthnIdle();
+    
+    try {
+      debugLog('Chiamata a evalPrfWithAssertion()...');
+      prfBits = await evalPrfWithAssertion(credential.rawId);
+      debugLog('evalPrfWithAssertion successo!');
+    } catch (e) {
+      debugLog('Errore evalPrfWithAssertion: ' + e.name + ' - ' + e.message);
+      throw new Error('Errore durante valutazione PRF: ' + (e.name || 'Sconosciuto') + ' - ' + (e.message || ''));
+    }
   }
   
   if (!prfBits) {
