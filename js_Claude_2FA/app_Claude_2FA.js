@@ -897,13 +897,17 @@ function setupEventListeners() {
   const btnLoginBiometric = document.getElementById('btn-login-biometric');
   if (btnLoginBiometric) {
     btnLoginBiometric.addEventListener('click', async () => {
+      TwoFactor.debugLog('Pulsante login biometrico cliccato!');
       const localVaultData = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (!localVaultData) {
+        TwoFactor.debugLog('Errore: nessun vault locale');
         UI.showToast("Nessun vault locale trovato", "error");
         return;
       }
       try {
+        TwoFactor.debugLog('Chiamata a unlockWithBiometric()...');
         const vaultKeyRaw = await TwoFactor.unlockWithBiometric();
+        TwoFactor.debugLog('unlockWithBiometric() ritornato con successo!');
         const encryptedBlob = base64ToArrayBuffer(localVaultData);
         await appVault.unlockWithVaultKey(vaultKeyRaw, encryptedBlob);
         // appPassword resta null: non l'abbiamo mai avuta in questo percorso.

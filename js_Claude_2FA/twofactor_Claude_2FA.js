@@ -28,7 +28,7 @@ const TOTP_KEY = 'dipavaultguard_totp';
 let cachedPrfSecretKey = null; // Cache temporanea per bypassare bug Android
 
 // --- DEBUG OVERLAY ---
-function debugLog(msg) {
+export function debugLog(msg) {
   let div = document.getElementById('debug-log-overlay');
   if (!div) {
     div = document.createElement('div');
@@ -289,22 +289,45 @@ async function evalPrfWithAssertion(credentialRawId, salt = PRF_SALT) {
 // Sblocca il vault tramite biometria: chiede l'impronta/volto, recupera l'output PRF e
 // svincola la vaultKey precedentemente wrappata. Restituisce la vaultKey grezza (Uint8Array).
 export async function unlockWithBiometric() {
+  debugLog('Inizio unlockWithBiometric');
   const recordRaw = localStorage.getItem(BIOMETRIC_KEY);
-  if (!recordRaw) throw new Error('Sblocco biometrico non configurato su questo dispositivo.');
+  if (!recordRaw) {
+    debugLog('Errore: record non trovato in localStorage');
+    throw new Error('Sblocco biometrico non configurato su questo dispositivo.');
+  }
   const record = JSON.parse(recordRaw);
 
   const credentialId = base64ToBuffer(record.credentialId);
-  const prfBits = await evalPrfWithAssertion(credentialId);
+  debugLog('Chiamata a evalPrfWithAssertion per sblocco vault...');
+  
+  // Aggiungiamo un timeout di sicurezza di 10 secondi per vedere se la promise pende per sempre
+  const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_GET')), 10000));
+  
+  let prfBits;
+  try {
+    prfBits = await Promise.race([
+      evalPrfWithAssertion(credentialId),
+      timeoutPromise
+    ]);
+    debugLog('evalPrfWithAssertion sblocco completato!');
+  } catch (e) {
+    debugLog('Errore in evalPrfWithAssertion sblocco: ' + e.message);
+    throw e;
+  }
+
   if (!prfBits) {
+    debugLog('Errore: prfBits è nullo');
     throw new Error('Verifica biometrica non riuscita o annullata.');
   }
 
+  debugLog('Derivazione chiavi di sblocco in corso...');
   const wrappingKeyRaw = await hkdfDeriveBits(prfBits, 'dipavaultguard-biometric-wrap');
   const vaultKeyRaw = await aesDecryptRaw(
     wrappingKeyRaw,
     base64ToBuffer(record.iv),
     base64ToBuffer(record.wrapped)
   );
+  debugLog('Sblocco completato con successo!');
   return vaultKeyRaw;
 }
 
