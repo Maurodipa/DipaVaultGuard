@@ -1,8 +1,8 @@
-const CACHE_NAME = 'dipavaultguard-v20';
+﻿const CACHE_NAME = 'dipavaultguard-v21';
 // NOTA: percorsi RELATIVI (senza "/" iniziale). Il sito vive in un sottopercorso su GitHub
 // Pages (es. https://tuonome.github.io/nome-repo/): un percorso assoluto come "/index.html"
 // punterebbe alla radice del dominio invece che alla cartella del sito, e non verrebbe mai
-// trovato (stesso tipo di bug già visto con manifest.json e con il popup di Google Drive).
+// trovato (stesso tipo di bug giÃ  visto con manifest.json e con il popup di Google Drive).
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -67,3 +67,4 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
