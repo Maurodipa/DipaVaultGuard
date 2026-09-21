@@ -266,16 +266,10 @@ async function evalPrfWithAssertion(credentialRawId, salt = PRF_SALT) {
     // che miracolosamente aggira il bug di sistema.
     const isAndroid = /Android/i.test(navigator.userAgent);
     if (!isAndroid) {
-      let idBuffer = credentialRawId;
-      if (credentialRawId instanceof Uint8Array) {
-        idBuffer = credentialRawId.buffer.slice(
-          credentialRawId.byteOffset, 
-          credentialRawId.byteOffset + credentialRawId.byteLength
-        );
-      }
-      req.publicKey.allowCredentials = [{ id: idBuffer, type: 'public-key' }];
+      // Su PC usiamo l'id grezzo (Uint8Array) come da standard
+      req.publicKey.allowCredentials = [{ id: credentialRawId, type: 'public-key' }];
     } else {
-      debugLog('Android rilevato: ometto allowCredentials per evitare l\'hang di sistema.');
+      // debugLog('Android rilevato: ometto allowCredentials per evitare l\'hang di sistema.');
     }
   }
   
