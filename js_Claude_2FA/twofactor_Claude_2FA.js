@@ -25,6 +25,67 @@ import { aesEncryptRaw, aesDecryptRaw, hkdfDeriveBits } from './crypto_Claude_2F
 
 const BIOMETRIC_KEY = 'dipavaultguard_biometric';
 const TOTP_KEY = 'dipavaultguard_totp';
+
+// --- DEBUG OVERLAY ---
+function debugLog(msg) {
+  let div = document.getElementById('debug-log-overlay');
+  if (!div) {
+    div = document.createElement('div');
+    div.id = 'debug-log-overlay';
+    div.style.position = 'fixed';
+    div.style.top = '0';
+    div.style.left = '0';
+    div.style.width = '100%';
+    div.style.height = '40%';
+    div.style.backgroundColor = 'rgba(0,0,0,0.85)';
+    div.style.color = 'lime';
+    div.style.zIndex = '99999';
+    div.style.overflowY = 'auto';
+    div.style.fontSize = '12px';
+    div.style.padding = '10px';
+    div.style.pointerEvents = 'none';
+    document.body.appendChild(div);
+  }
+  const time = new Date().toISOString().split('T')[1].slice(0, -1);
+  div.innerHTML += '<div>[' + time + '] ' + msg + '</div>';
+  div.scrollTop = div.scrollHeight;
+  console.log('[DEBUG]', msg);
+}
+
+// --- WAIT FOR WEBAUTHN IDLE (KIMI METHOD) ---
+async function waitForWebAuthnIdle() {
+  debugLog('Inizio attesa WebAuthn (Kimi polling)...');
+  let retries = 0;
+  while (retries < 20) {
+    const ac = new AbortController();
+    try {
+      const p = navigator.credentials.get({
+        publicKey: {
+          challenge: new Uint8Array(16),
+          allowCredentials: []
+        },
+        signal: ac.signal
+      });
+      ac.abort();
+      await p;
+      debugLog('Polling: get() risolta (inatteso).');
+      break; 
+    } catch (e) {
+      if (e.name === 'AbortError') {
+        debugLog('Polling: AbortError ricevuto -> WebAuthn è LIBERO!');
+        return;
+      }
+      if (e.message && e.message.includes('pending')) {
+        debugLog('Polling: Ancora pending... attesa 300ms (retry ' + retries + ')');
+      } else {
+        debugLog('Polling: Errore diverso: ' + e.name);
+      }
+    }
+    await new Promise(r => setTimeout(r, 300));
+    retries++;
+  }
+  debugLog('Fine polling (timeout o libero).');
+}
 const LAST_FULL_AUTH_KEY = 'dipavaultguard_last_full_auth';
 const MAX_DAYS_WITHOUT_PASSWORD = 7;
 
@@ -112,7 +173,9 @@ export async function isPlatformAuthenticatorAvailable() {
 // Lancia un errore chiaro se il dispositivo non supporta l'estensione PRF (in quel caso l'app
 // dovrebbe proporre la configurazione TOTP come alternativa).
 export async function registerBiometric(vaultKeyRaw) {
+  debugLog('Inizio registerBiometric');
   if (!window.PublicKeyCredential) {
+    debugLog('WebAuthn non supportato');
     throw new Error('WebAuthn non è supportato su questo browser.');
   }
 
@@ -121,6 +184,7 @@ export async function registerBiometric(vaultKeyRaw) {
 
   let credential;
   try {
+    debugLog('Chiamata a navigator.credentials.create()...');
     credential = await navigator.credentials.create({
       publicKey: {
         challenge,
@@ -139,36 +203,42 @@ export async function registerBiometric(vaultKeyRaw) {
         extensions: { prf: {} }
       }
     });
+    debugLog('create() successo!');
   } catch (e) {
+    debugLog('Errore in create(): ' + e.name + ' - ' + e.message);
     throw new Error('Errore biometria: ' + (e.name || 'Sconosciuto') + ' - ' + (e.message || ''));
   }
 
   if (!credential) {
+    debugLog('Nessuna credenziale restituita');
     throw new Error('Registrazione biometrica annullata.');
   }
 
   const createExt = credential.getClientExtensionResults ? credential.getClientExtensionResults() : {};
   if (!createExt || !createExt.prf || !createExt.prf.enabled) {
+    debugLog('PRF non abilitato nei risultati di create()');
     throw new Error('PRF_UNSUPPORTED');
   }
 
-  // Su molti browser/dispositivi il valore PRF non è disponibile subito in fase di
-  // registrazione: va richiesto con un'asserzione immediatamente successiva.
-  // Aggiungiamo un ritardo di 1000ms perché Android a volte lascia la UI appesa
-  // e la richiesta successiva fallisce con "A request is already pending".
-  await new Promise(r => setTimeout(r, 1000));
+  debugLog('Inizio Kimi polling workaround...');
+  await waitForWebAuthnIdle();
   
   let prfBits;
   try {
+    debugLog('Chiamata a evalPrfWithAssertion()...');
     prfBits = await evalPrfWithAssertion(credential.rawId);
+    debugLog('evalPrfWithAssertion successo!');
   } catch (e) {
+    debugLog('Errore evalPrfWithAssertion: ' + e.name + ' - ' + e.message);
     throw new Error('Errore durante valutazione PRF: ' + (e.name || 'Sconosciuto') + ' - ' + (e.message || ''));
   }
   
   if (!prfBits) {
+    debugLog('Nessun bit PRF ritornato');
     throw new Error('PRF_UNSUPPORTED');
   }
 
+  debugLog('Derivazione chiavi in corso...');
   const wrappingKeyRaw = await hkdfDeriveBits(prfBits, 'dipavaultguard-biometric-wrap');
   const { iv, ciphertext } = await aesEncryptRaw(wrappingKeyRaw, vaultKeyRaw);
 
@@ -178,6 +248,7 @@ export async function registerBiometric(vaultKeyRaw) {
     wrapped: bufferToBase64(ciphertext)
   };
   localStorage.setItem(BIOMETRIC_KEY, JSON.stringify(record));
+  debugLog('Registrazione completata con successo!');
   return true;
 }
 
