@@ -367,6 +367,13 @@ export function initUI(vault, driveClient) {
   });
 
   document.getElementById('btn-import-csv-trigger').addEventListener('click', () => {
+    // Mostriamo un popup descrittivo prima di aprire il selettore di file
+    const msg = "Il file CSV deve avere la seguente struttura esatta di colonne:\n\n" +
+                "name, url, username, password, notes, category\n\n" +
+                "Le righe senza il campo 'name' verranno ignorate.\n" +
+                "Procedere con l'importazione?";
+    if (!confirm(msg)) return;
+
     const oldInput = document.getElementById('file-import-csv');
     // Replace the input element to remove any stale/duplicate listeners
     const newInput = oldInput.cloneNode(true);

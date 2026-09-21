@@ -1,4 +1,4 @@
-﻿# DipaVaultGuard
+# DipaVaultGuard
 
 Password Manager Personale Zero-Knowledge che funziona interamente nel browser con sincronizzazione cloud tramite Google Drive. Completamente gratuito, open source e serverless.
 
@@ -66,7 +66,29 @@ DipaVaultGuard è progettato per sembrare e funzionare come un'app nativa se "in
 - **Su PC/Mac (Chrome/Edge):** Clicca l'icona dello schermo con la freccetta giù nella barra degli indirizzi in alto.
 Una volta installata, potrai sbloccare DipaVaultGuard con il volto/impronta digitale senza dover usare il browser web, anche in assenza di rete internet (Offline mode)!
 
-## 🔐 Sicurezza Avanzata e Dettagli sul 2SKD (Two-Secret Key Derivation)
+### 6. Struttura del file CSV per l'Importazione
+Se desideri importare le tue password da un altro gestore (o da un foglio di calcolo), la funzione **"Importa CSV"** all'interno delle opzioni richiede un file di testo in formato CSV (valori separati da virgola).
+Il file DEVE avere una riga di intestazione (header) come prima riga, con questi esatti nomi di colonne in inglese (l'ordine delle colonne non importa, purché i nomi siano questi):
+
+```csv
+name, url, username, password, notes, category
+```
+
+**Esempio di contenuto del file:**
+```csv
+name,url,username,password,notes,category
+Gmail,https://mail.google.com,mario.rossi,SuperSegreta123!,Uso questo account per la banca,Email
+Amazon,https://amazon.it,mario.rossi@email.it,Pass!word456,,Shopping
+"Sito Strano",https://sito.com,user,"P,a,s,s",Note aggiuntive,Altro
+```
+
+**Regole di formattazione:**
+- La colonna `name` è **obbligatoria**. Se una riga non ha il nome, verrà ignorata durante l'importazione.
+- Le altre colonne sono opzionali, ma le intestazioni devono esistere.
+- Se i valori contengono virgole (es. una password o una nota con la virgola), racchiudi l'intero valore tra doppie virgolette `"..."`.
+- Se la `category` specificata non esiste nel tuo vault, verrà automaticamente raggruppata sotto "Altro".
+
+## 🛡️ Sicurezza Avanzata e Dettagli sul 2SKD (Two-Secret Key Derivation)
 A differenza dei normali password manager open source base, questa app adotta la protezione Two-Secret Key Derivation (ispirata all'architettura di sicurezza di 1Password).
 
 Il file crittografato che viene inviato ai server di Google non è protetto dalla tua sola password.
