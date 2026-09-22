@@ -531,7 +531,11 @@ async function handleBiometricPostPasswordVerification() {
     await completePostPasswordVerification();
   } catch (err) {
     console.error(err);
-    errorDiv.textContent = err.message || "Verifica biometrica non riuscita.";
+    let msg = err.message || "Verifica biometrica non riuscita.";
+    if (err.name === 'NotAllowedError' || err.name === 'AbortError' || msg.includes('timed out') || msg.includes('not allowed')) {
+      msg = "Operazione annullata. Riprova, oppure usa un metodo di sblocco alternativo o inserisci la Secret Key se richiesto.";
+    }
+    errorDiv.textContent = msg;
     errorDiv.classList.remove('hidden');
   }
 }
@@ -924,7 +928,12 @@ function setupEventListeners() {
         }
       } catch (err) {
         console.error(err);
-        UI.showToast(err.message || "Sblocco biometrico non riuscito. Usa la password.", "error");
+        let msg = err.message || "Sblocco biometrico non riuscito. Usa la password.";
+        // Rendi i messaggi di "Annulla" o "Timeout" molto più amichevoli
+        if (err.name === 'NotAllowedError' || err.name === 'AbortError' || msg.includes('timed out') || msg.includes('not allowed')) {
+          msg = "Operazione annullata. Inserisci la password.";
+        }
+        UI.showToast(msg, "warning");
         revealPasswordLoginForm();
       }
     });
