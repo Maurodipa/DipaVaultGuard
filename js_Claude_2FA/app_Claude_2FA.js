@@ -1169,8 +1169,22 @@ function setupEventListeners() {
   // Sync Now button
   const btnSyncNow = document.getElementById('btn-settings-sync-now');
   if (btnSyncNow) {
-    btnSyncNow.addEventListener('click', () => {
-      saveAndSync();
+    btnSyncNow.addEventListener('click', async () => {
+      UI.showToast("Sincronizzazione in corso...", "info");
+      btnSyncNow.disabled = true;
+      try {
+        await saveAndSync();
+        UI.showToast("Sincronizzazione completata!", "success");
+        const stats = appVault.getStats();
+        if (stats.lastUpdated) {
+          document.getElementById('settings-drive-last-sync').textContent = new Date(stats.lastUpdated).toLocaleString('it-IT');
+        }
+      } catch (err) {
+        console.error(err);
+        UI.showToast("Errore durante la sincronizzazione", "error");
+      } finally {
+        btnSyncNow.disabled = false;
+      }
     });
   }
 
