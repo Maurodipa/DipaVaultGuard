@@ -1175,9 +1175,9 @@ function setupEventListeners() {
       try {
         await saveAndSync();
         UI.showToast("Sincronizzazione completata!", "success");
-        const stats = appVault.getStats();
-        if (stats.lastUpdated) {
-          document.getElementById('settings-drive-last-sync').textContent = new Date(stats.lastUpdated).toLocaleString('it-IT');
+        const lastSync = driveClient.getLastSyncTime();
+        if (lastSync) {
+          document.getElementById('settings-drive-last-sync').textContent = lastSync.toLocaleString('it-IT');
         }
       } catch (err) {
         console.error(err);
