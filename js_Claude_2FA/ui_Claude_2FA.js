@@ -614,6 +614,7 @@ export function openItemView(item) {
 }
 
 export function openItemEdit(item = null) {
+  document.dispatchEvent(new CustomEvent('request-auto-sync'));
   const modal = document.getElementById('modal-item-edit');
   const form = document.getElementById('form-item-edit');
   form.reset();
