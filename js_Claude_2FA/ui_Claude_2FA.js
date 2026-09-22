@@ -665,6 +665,14 @@ export function openSettings() {
   document.getElementById('settings-autolock').value = settings.autoLockMinutes || 5;
   document.getElementById('settings-google-client-id').value = settings.googleClientId || '';
   
+  const autosyncCheckbox = document.getElementById('settings-drive-autosync');
+  if (autosyncCheckbox) {
+    autosyncCheckbox.checked = localStorage.getItem('dipavaultguard-autosync') !== 'false';
+    autosyncCheckbox.onchange = (e) => {
+      localStorage.setItem('dipavaultguard-autosync', e.target.checked);
+    };
+  }
+  
   if (appDriveClient && appDriveClient.isAuthenticated()) {
     document.getElementById('settings-drive-status').textContent = `${STRINGS.connected} (${appDriveClient.userInfo?.email || ''})`;
     document.getElementById('btn-settings-drive-toggle').textContent = STRINGS.disconnect;

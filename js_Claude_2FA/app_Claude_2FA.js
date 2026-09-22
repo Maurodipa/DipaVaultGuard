@@ -390,9 +390,7 @@ async function unlockBlobWithPasswordAndVerification(pwd, blob, persistLocally =
   // salvato localmente il blob scaricato da Drive in QUESTA stessa chiamata, un secondo
   // sync immediato è ridondante e rischia di sovrascrivere la copia corretta con una
   // versione temporaneamente stale restituita dall'API di Drive.
-  if (!persistLocally && driveClient && driveClient.isAuthenticated()) {
-    syncFromDrive();
-  }
+  tryAutoSyncDrive(persistLocally);
 }
 
 // Scarica (se presente) la configurazione OTP via email salvata su Drive e la adotta
@@ -568,9 +566,7 @@ async function completePostPasswordVerification() {
   // corretta con una vecchia. Lo saltiamo solo in questo caso; per uno sblocco puramente
   // locale (password/biometria senza passare da Drive) il sync in background resta utile per
   // recuperare eventuali modifiche fatte da altri dispositivi.
-  if (!justPersistedFromDrive && driveClient && driveClient.isAuthenticated()) {
-    syncFromDrive();
-  }
+  tryAutoSyncDrive(justPersistedFromDrive);
 }
 
 // Annulla la verifica aggiuntiva. Il contenuto del vault non è MAI stato decifrato in questo
@@ -628,6 +624,25 @@ async function saveAndSync() {
   } catch (err) {
     console.error("Error saving vault:", err);
     UI.showToast("Errore durante il salvataggio", "error");
+  }
+}
+
+async function tryAutoSyncDrive(skipIfJustPersisted = false) {
+  if (skipIfJustPersisted) return;
+  if (!driveClient) return;
+  if (localStorage.getItem('dipavaultguard-autosync') === 'false') return;
+
+  if (driveClient.isAuthenticated()) {
+    syncFromDrive();
+  } else {
+    try {
+      UI.showToast("Connessione automatica a Drive...", "info");
+      await driveClient.authenticate();
+      syncFromDrive();
+    } catch (e) {
+      console.warn("Auto-connect blocked or failed", e);
+      UI.showToast("Connessione automatica a Drive fallita (popup bloccato o annullato).", "warning");
+    }
   }
 }
 
@@ -923,9 +938,7 @@ function setupEventListeners() {
         UI.renderCategories(appVault.getCategories(), null);
         UI.resetAutoLockTimer();
 
-        if (driveClient && driveClient.isAuthenticated()) {
-          syncFromDrive();
-        }
+        tryAutoSyncDrive();
       } catch (err) {
         console.error(err);
         let msg = err.message || "Sblocco biometrico non riuscito. Usa la password.";
@@ -971,9 +984,7 @@ function setupEventListeners() {
         UI.renderCategories(appVault.getCategories(), null);
         UI.resetAutoLockTimer();
 
-        if (driveClient && driveClient.isAuthenticated()) {
-          syncFromDrive();
-        }
+        tryAutoSyncDrive();
       } catch (err) {
         console.error(err);
         UI.showToast(err.message || "Codice 2FA errato", "error");
