@@ -1109,6 +1109,29 @@ function setupEventListeners() {
     });
   }
   
+  const btnSync = document.getElementById('btn-sync');
+  if (btnSync) {
+    btnSync.addEventListener('click', async () => {
+      if (!driveClient) {
+        UI.showToast("Configura il Google Client ID nelle impostazioni", "warning");
+        return;
+      }
+      if (!driveClient.isAuthenticated()) {
+        try {
+          await driveClient.authenticate();
+          UI.showToast("Connesso a Drive. Sincronizzazione in corso...", "info");
+          await saveAndSync();
+        } catch (err) {
+          console.error(err);
+          UI.showToast("Errore di connessione a Drive", "error");
+        }
+      } else {
+        UI.showToast("Sincronizzazione in corso...", "info");
+        await saveAndSync();
+      }
+    });
+  }
+
   // Drive Connect/Disconnect from Settings
   const btnSettingsDriveToggle = document.getElementById('btn-settings-drive-toggle');
   if (btnSettingsDriveToggle) {
