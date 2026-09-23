@@ -229,6 +229,13 @@ export function initUI(vault, driveClient) {
       }
     }, 200);
   });
+  
+  // Trigger search immediately when clicking/focusing the search bar if there's text
+  document.getElementById('search-input').addEventListener('focus', (e) => {
+    if (e.target.value.trim()) {
+      e.target.dispatchEvent(new Event('input'));
+    }
+  });
 
   // Password Generator Events
   document.getElementById('btn-open-generator').addEventListener('click', () => {
@@ -429,6 +436,13 @@ export function showScreen(screenId) {
   document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
   const screen = document.getElementById(screenId);
   if (screen) screen.classList.remove('hidden');
+  
+  if (screenId === 'screen-dashboard') {
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) {
+      searchInput.value = '';
+    }
+  }
 }
 
 export function showToast(message, type = 'info', durationMs = null) {
