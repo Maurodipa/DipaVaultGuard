@@ -349,6 +349,13 @@ export function initUI(vault, driveClient) {
     startAutoLockTimer(mins);
   });
   
+  document.getElementById('settings-backup-interval').addEventListener('change', (e) => {
+    const days = parseInt(e.target.value);
+    const settings = JSON.parse(localStorage.getItem('dipavaultguard_settings') || '{}');
+    settings.autoBackupIntervalDays = days;
+    localStorage.setItem('dipavaultguard_settings', JSON.stringify(settings));
+  });
+  
   document.getElementById('settings-google-client-id').addEventListener('change', (e) => {
     const settings = JSON.parse(localStorage.getItem('dipavaultguard_settings') || '{}');
     settings.googleClientId = e.target.value.trim();
@@ -680,6 +687,7 @@ export function openSettings() {
   
   const settings = JSON.parse(localStorage.getItem('dipavaultguard_settings') || '{}');
   document.getElementById('settings-autolock').value = settings.autoLockMinutes || 5;
+  document.getElementById('settings-backup-interval').value = settings.autoBackupIntervalDays !== undefined ? settings.autoBackupIntervalDays : 0;
   document.getElementById('settings-google-client-id').value = settings.googleClientId || '';
   
   const autosyncCheckbox = document.getElementById('settings-drive-autosync');

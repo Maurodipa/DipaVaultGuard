@@ -726,6 +726,15 @@
                     <div class="setting-actions">
                         <div class="mb-4">
                             <button class="btn btn-primary btn-sm" id="btn-download-backup" style="width: 100%;">Scarica Backup Cifrato (.bin)</button>
+                            <div class="setting-group mt-2">
+                                <label for="settings-backup-interval" class="text-sm">Download automatico (silenzioso):</label>
+                                <select id="settings-backup-interval" class="form-control form-control-sm" style="margin-top: 4px;">
+                                    <option value="0">Disattivato</option>
+                                    <option value="7">Ogni 7 giorni</option>
+                                    <option value="15">Ogni 15 giorni</option>
+                                    <option value="30">Ogni 30 giorni</option>
+                                </select>
+                            </div>
                             <p class="text-xs text-muted mt-1">Consigliato! Scarica una copia del vault crittografata con la tua password principale. Puoi ripristinarlo in qualsiasi momento.</p>
                         </div>
                         <div>

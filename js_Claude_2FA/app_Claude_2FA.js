@@ -385,7 +385,7 @@ async function unlockBlobWithPasswordAndVerification(pwd, blob, persistLocally =
   UI.showScreen('screen-dashboard');
   UI.renderItemList(appVault.getAllItems());
   UI.renderCategories(appVault.getCategories(), null);
-  UI.resetAutoLockTimer();
+  UI.resetAutoLockTimer(); checkAndTriggerAutoBackup();
   // Vedi il commento gemello in completePostPasswordVerification(): se abbiamo appena
   // salvato localmente il blob scaricato da Drive in QUESTA stessa chiamata, un secondo
   // sync immediato è ridondante e rischia di sovrascrivere la copia corretta con una
@@ -430,7 +430,7 @@ async function startPostPasswordVerification() {
   document.getElementById('btn-otp-reset-biometric').classList.add('hidden');
 
   UI.showScreen('screen-otp-verify');
-  UI.resetAutoLockTimer(); // la vaultKey temporanea è comunque sensibile: non lasciarla in sospeso a tempo indeterminato
+  UI.resetAutoLockTimer(); checkAndTriggerAutoBackup(); // la vaultKey temporanea è comunque sensibile: non lasciarla in sospeso a tempo indeterminato
 
   if (EmailOTP.isEmailOtpConfigured()) {
     await trySendEmailOtp(totpFallbackAvailable, biometricFallbackAvailable);
@@ -557,7 +557,7 @@ async function completePostPasswordVerification() {
   UI.showScreen('screen-dashboard');
   UI.renderItemList(appVault.getAllItems());
   UI.renderCategories(appVault.getCategories(), null);
-  UI.resetAutoLockTimer();
+  UI.resetAutoLockTimer(); checkAndTriggerAutoBackup();
   // Se abbiamo appena scaricato e salvato localmente il blob da Drive in QUESTA stessa
   // operazione, locale e remoto sono già garantiti allineati: un secondo sync immediato è
   // ridondante e, peggio, rischioso — se l'API di Drive restituisse per un istante una
@@ -718,7 +718,7 @@ function setupEventListeners() {
         UI.showScreen('screen-dashboard');
         UI.renderItemList(appVault.getAllItems());
         UI.renderCategories(appVault.getCategories(), null);
-        UI.resetAutoLockTimer();
+        UI.resetAutoLockTimer(); checkAndTriggerAutoBackup();
       } catch (err) {
         console.error(err);
         UI.showToast("Errore durante la creazione", "error");
@@ -940,7 +940,7 @@ function setupEventListeners() {
         UI.showScreen('screen-dashboard');
         UI.renderItemList(appVault.getAllItems());
         UI.renderCategories(appVault.getCategories(), null);
-        UI.resetAutoLockTimer();
+        UI.resetAutoLockTimer(); checkAndTriggerAutoBackup();
 
         tryAutoSyncDrive();
       } catch (err) {
@@ -986,7 +986,7 @@ function setupEventListeners() {
         UI.showScreen('screen-dashboard');
         UI.renderItemList(appVault.getAllItems());
         UI.renderCategories(appVault.getCategories(), null);
-        UI.resetAutoLockTimer();
+        UI.resetAutoLockTimer(); checkAndTriggerAutoBackup();
 
         tryAutoSyncDrive();
       } catch (err) {
@@ -1229,7 +1229,7 @@ function setupEventListeners() {
       el.addEventListener('change', () => {
         if (id === 'settings-autolock') {
           settings.autoLockMinutes = parseInt(el.value, 10);
-          UI.resetAutoLockTimer();
+          UI.resetAutoLockTimer(); checkAndTriggerAutoBackup();
         } else if (id === 'settings-google-client-id') {
           settings.googleClientId = el.value.trim();
           const currentId = settings.googleClientId || DEFAULT_GOOGLE_CLIENT_ID;
@@ -1817,4 +1817,22 @@ function base64ToArrayBuffer(base64) {
   // fa fallire il riconoscimento del marcatore ogni volta che il blob viene riletto da
   // localStorage, causando un fallimento di decifratura silenzioso e apparentemente casuale.
   return bytes;
+}
+
+function checkAndTriggerAutoBackup() {
+  const settings = JSON.parse(localStorage.getItem('dipavaultguard_settings') || '{}');
+  const intervalDays = settings.autoBackupIntervalDays;
+  if (!intervalDays || intervalDays <= 0) return;
+  
+  const lastBackupStr = localStorage.getItem('dipavaultguard_last_auto_backup');
+  const now = Date.now();
+  if (!lastBackupStr || (now - parseInt(lastBackupStr)) >= intervalDays * 24 * 60 * 60 * 1000) {
+    // Wait a couple of seconds so the UI finishes rendering and the user isn't interrupted
+    setTimeout(() => {
+      const btn = document.getElementById('btn-download-backup');
+      if (btn) btn.click();
+      localStorage.setItem('dipavaultguard_last_auto_backup', now.toString());
+      UI.showToast(`Backup automatico (${intervalDays}gg) salvato nei Download!`, "info", 5000);
+    }, 2000);
+  }
 }
