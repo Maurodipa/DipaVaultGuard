@@ -201,6 +201,11 @@
                 <svg class="icon mr-2"><use href="#icon-cloud"></use></svg>
                 Ripristina da Google Drive
             </button>
+            <button id="btn-setup-file" class="btn btn-outline btn-block mt-3">
+                <svg class="icon mr-2"><use href="#icon-lock"></use></svg>
+                Ripristina da file locale (.bin)
+            </button>
+            <input type="file" id="input-setup-file" accept=".bin,.enc" class="hidden">
             <!-- FINE BLOCCO DA AGGIUNGERE -->
         </div>
     </section>
@@ -719,8 +724,12 @@
                 <section class="settings-section">
                     <h3>Dati</h3>
                     <div class="setting-actions">
+                        <div class="mb-4">
+                            <button class="btn btn-primary btn-sm" id="btn-download-backup" style="width: 100%;">Scarica Backup Cifrato (.bin)</button>
+                            <p class="text-xs text-muted mt-1">Consigliato! Scarica una copia del vault crittografata con la tua password principale. Puoi ripristinarlo in qualsiasi momento.</p>
+                        </div>
                         <div>
-                            <button class="btn btn-secondary btn-sm" id="btn-export-csv">Esporta CSV</button>
+                            <button class="btn btn-outline btn-sm" id="btn-export-csv">Esporta CSV in chiaro</button>
                             <p class="text-xs text-danger mt-1">Attenzione: il file esportato NON sarà criptato!</p>
                         </div>
                         <div>

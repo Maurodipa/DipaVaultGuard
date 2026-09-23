@@ -1560,6 +1560,52 @@ function setupEventListeners() {
       }
     });
   }
+
+  // Restore from File
+  const btnSetupFile = document.getElementById('btn-setup-file');
+  const inputSetupFile = document.getElementById('input-setup-file');
+  if (btnSetupFile && inputSetupFile) {
+    btnSetupFile.addEventListener('click', () => {
+      inputSetupFile.click();
+    });
+    
+    inputSetupFile.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const remoteData = new Uint8Array(e.target.result);
+          const pwd = await showPromptModal({
+            title: 'Password principale',
+            message: 'Inserisci la password principale per decifrare il file:',
+            inputType: 'password'
+          });
+          if (pwd) {
+            UI.showScreen('screen-loading');
+            try {
+              await unlockBlobWithPasswordAndVerification(pwd, remoteData, true);
+              UI.showToast("Vault ripristinato con successo!", "success");
+            } catch (err) {
+              console.error(err);
+              UI.showToast(err.message || "Password errata o file non valido", "error", 6000);
+              UI.showScreen('screen-setup');
+            }
+          } else {
+            UI.showToast("Operazione annullata", "info");
+          }
+        } catch (err) {
+          console.error("File read error:", err);
+          UI.showToast("Impossibile leggere il file", "error");
+        }
+      };
+      reader.readAsArrayBuffer(file);
+      // Reset input so it triggers again if they select the same file
+      inputSetupFile.value = '';
+    });
+  }
+
   // Drive Connect / Restore from Setup Screen
   const btnSetupDrive = document.getElementById('btn-setup-drive');
   if (btnSetupDrive) {

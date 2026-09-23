@@ -354,6 +354,22 @@ export function initUI(vault, driveClient) {
     settings.googleClientId = e.target.value.trim();
     localStorage.setItem('dipavaultguard_settings', JSON.stringify(settings));
   });
+  document.getElementById('btn-download-backup').addEventListener('click', async () => {
+    try {
+      const encryptedBlob = await appVault.getEncryptedData();
+      const blob = new Blob([encryptedBlob], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `dipavault_backup_${new Date().toISOString().split('T')[0]}.bin`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      showToast("Errore durante la creazione del backup", "error");
+    }
+  });
+
 
   document.getElementById('btn-export-csv').addEventListener('click', () => {
     const csv = appVault.exportToCSV();
