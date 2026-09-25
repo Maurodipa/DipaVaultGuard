@@ -123,15 +123,22 @@ export function initUI(vault, driveClient) {
           toggleBtn.innerHTML = `<svg class="icon"><use href="#icon-${isPassword ? 'eye-slash' : 'eye'}"></use></svg>`;
         } else {
           // For span elements
+          const rawValue = document.getElementById(targetId + '-raw').value;
           const isHidden = targetEl.classList.contains('obfuscated');
-          if (isHidden) {
+          
+          if (!rawValue) {
             targetEl.classList.remove('obfuscated');
-            targetEl.textContent = document.getElementById(targetId + '-raw').value;
-            toggleBtn.innerHTML = `<svg class="icon"><use href="#icon-eye-slash"></use></svg>`;
+            targetEl.textContent = '';
           } else {
-            targetEl.classList.add('obfuscated');
-            targetEl.textContent = '••••••••••••';
-            toggleBtn.innerHTML = `<svg class="icon"><use href="#icon-eye"></use></svg>`;
+            if (isHidden) {
+              targetEl.classList.remove('obfuscated');
+              targetEl.textContent = rawValue;
+              toggleBtn.innerHTML = `<svg class="icon"><use href="#icon-eye-slash"></use></svg>`;
+            } else {
+              targetEl.classList.add('obfuscated');
+              targetEl.textContent = '••••••••••••';
+              toggleBtn.innerHTML = `<svg class="icon"><use href="#icon-eye"></use></svg>`;
+            }
           }
         }
       }
@@ -588,8 +595,13 @@ export function openItemView(item) {
   const pwdEl = document.getElementById('view-item-password');
   const pwdRawEl = document.getElementById('view-item-password-raw');
   pwdRawEl.value = item.password || '';
-  pwdEl.textContent = '••••••••••••';
-  pwdEl.classList.add('obfuscated');
+  if (item.password) {
+    pwdEl.textContent = '••••••••••••';
+    pwdEl.classList.add('obfuscated');
+  } else {
+    pwdEl.textContent = '';
+    pwdEl.classList.remove('obfuscated');
+  }
   
   const notesEl = document.getElementById('view-item-notes');
   if (item.notes) {
