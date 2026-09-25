@@ -437,6 +437,20 @@ export function initUI(vault, driveClient) {
   ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'].forEach(evt => {
     document.addEventListener(evt, resetAutoLockTimer, { passive: true });
   });
+
+  // Watch for offline/online status to show warning inside edit modal
+  window.addEventListener('offline', () => {
+    const banner = document.getElementById('offline-warning-banner');
+    if (banner && !document.getElementById('modal-item-edit').classList.contains('hidden')) {
+      banner.classList.remove('hidden');
+    }
+  });
+  window.addEventListener('online', () => {
+    const banner = document.getElementById('offline-warning-banner');
+    if (banner) {
+      banner.classList.add('hidden');
+    }
+  });
 }
 
 export function showScreen(screenId) {
@@ -667,6 +681,16 @@ export function openItemEdit(item = null) {
   const modal = document.getElementById('modal-item-edit');
   const form = document.getElementById('form-item-edit');
   form.reset();
+  
+  // Show offline warning if disconnected
+  const offlineBanner = document.getElementById('offline-warning-banner');
+  if (offlineBanner) {
+    if (!navigator.onLine) {
+      offlineBanner.classList.remove('hidden');
+    } else {
+      offlineBanner.classList.add('hidden');
+    }
+  }
   
   document.getElementById('edit-item-title').textContent = item ? STRINGS.editItem : STRINGS.newItem;
   
