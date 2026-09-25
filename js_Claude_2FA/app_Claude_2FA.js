@@ -630,8 +630,14 @@ async function saveAndSync() {
 async function checkTrulyOnline() {
   if (!navigator.onLine) return false;
   try {
-    const response = await fetch('https://www.google.com/generate_204', { cache: 'no-store', mode: 'no-cors' });
-    return true;
+    // Utilizziamo un endpoint con CORS abilitato (Google Discovery API)
+    // Se un router/captive portal intercetta la richiesta, fallirà per via del CORS.
+    // Se siamo davvero online, restituirà 200 OK.
+    const response = await fetch('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest', { 
+      method: 'GET',
+      cache: 'no-store' 
+    });
+    return response.ok;
   } catch (e) {
     return false;
   }
@@ -1175,11 +1181,17 @@ function setupEventListeners() {
         driveClient.signOut();
         UI.showToast("Disconnesso da Drive", "info");
         btnSettingsDriveToggle.textContent = 'Connetti';
+        const statusEl = document.getElementById('settings-drive-status');
+        if (statusEl) statusEl.textContent = 'Disconnesso';
+        document.querySelectorAll('.drive-connected-only').forEach(el => el.classList.add('hidden'));
       } else {
         try {
           await driveClient.authenticate();
           UI.showToast("Connesso a Drive", "success");
           btnSettingsDriveToggle.textContent = 'Disconnetti';
+          const statusEl = document.getElementById('settings-drive-status');
+          if (statusEl) statusEl.textContent = `Connesso (${driveClient.userInfo?.email || ''})`;
+          document.querySelectorAll('.drive-connected-only').forEach(el => el.classList.remove('hidden'));
 
           // Se su Drive c'è già una configurazione OTP la adottiamo qui; altrimenti, se questo
           // dispositivo ne ha già una configurata localmente, la carichiamo su Drive.
