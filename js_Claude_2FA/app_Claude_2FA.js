@@ -627,10 +627,27 @@ async function saveAndSync() {
   }
 }
 
+async function checkTrulyOnline() {
+  if (!navigator.onLine) return false;
+  try {
+    const response = await fetch('https://www.google.com/generate_204', { cache: 'no-store', mode: 'no-cors' });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 async function tryAutoSyncDrive(skipIfJustPersisted = false) {
   if (skipIfJustPersisted) return;
   if (!driveClient) return;
   if (localStorage.getItem('dipavaultguard-autosync') === 'false') return;
+
+  const isOnline = await checkTrulyOnline();
+  if (!isOnline) {
+    const banner = document.getElementById('offline-warning-banner');
+    if (banner) banner.classList.remove('hidden');
+    return; // Don't even try to authenticate!
+  }
 
   if (driveClient.isAuthenticated()) {
     syncFromDrive();
@@ -642,6 +659,8 @@ async function tryAutoSyncDrive(skipIfJustPersisted = false) {
     } catch (e) {
       console.warn("Auto-connect blocked or failed", e);
       UI.showToast("Connessione automatica a Drive fallita (popup bloccato o annullato).", "warning");
+      const banner = document.getElementById('offline-warning-banner');
+      if (banner) banner.classList.remove('hidden');
     }
   }
 }
