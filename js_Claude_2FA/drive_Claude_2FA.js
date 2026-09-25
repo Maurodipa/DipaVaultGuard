@@ -76,7 +76,20 @@ export class GoogleDriveClient {
       this._rejectAuth = reject;
       this._fetchUserInfoOnAuth = false;
       
-      this.tokenClient.requestAccessToken({ prompt: '' });
+      const email = localStorage.getItem('dipavaultguard-drive-email');
+      this.tokenClient.requestAccessToken({ 
+        prompt: 'none',
+        login_hint: email || undefined 
+      });
+
+      // Timeout di sicurezza nel caso in cui la chiamata silente venga bloccata o ignorata
+      setTimeout(() => {
+        if (this._rejectAuth) {
+          this._rejectAuth(new Error("Timeout silentRefresh"));
+          this._resolveAuth = null;
+          this._rejectAuth = null;
+        }
+      }, 5000);
     });
   }
 
@@ -99,6 +112,9 @@ export class GoogleDriveClient {
     });
     if (!response.ok) throw new Error("Impossibile recuperare info utente");
     this.userInfo = await response.json();
+    if (this.userInfo && this.userInfo.email) {
+      localStorage.setItem('dipavaultguard-drive-email', this.userInfo.email);
+    }
     return this.userInfo;
   }
 

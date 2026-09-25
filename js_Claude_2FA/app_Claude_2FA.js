@@ -660,13 +660,12 @@ async function tryAutoSyncDrive(skipIfJustPersisted = false) {
   } else {
     try {
       UI.showToast("Connessione automatica a Drive...", "info");
-      await driveClient.authenticate();
+      await driveClient.silentRefresh();
+      UI.showToast("Connessione automatica riuscita", "success");
       syncFromDrive();
     } catch (e) {
       console.warn("Auto-connect blocked or failed", e);
-      UI.showToast("Connessione automatica a Drive fallita (popup bloccato o annullato).", "warning");
-      const banner = document.getElementById('offline-warning-banner');
-      if (banner) banner.classList.remove('hidden');
+      UI.showToast("Connessione automatica a Drive fallita. Accedi manualmente dalle Impostazioni.", "warning");
     }
   }
 }
