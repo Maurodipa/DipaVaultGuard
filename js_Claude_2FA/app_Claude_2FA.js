@@ -1160,6 +1160,7 @@ function setupEventListeners() {
           await driveClient.authenticate();
           UI.showToast("Connesso a Drive. Sincronizzazione in corso...", "info");
           await saveAndSync();
+          UI.updateLastSyncLabel();
         } catch (err) {
           console.error(err);
           UI.showToast("Errore di connessione a Drive", "error");
@@ -1167,6 +1168,7 @@ function setupEventListeners() {
       } else {
         UI.showToast("Sincronizzazione in corso...", "info");
         await saveAndSync();
+        UI.updateLastSyncLabel();
       }
     });
   }
@@ -1220,10 +1222,7 @@ function setupEventListeners() {
       try {
         await saveAndSync();
         UI.showToast("Sincronizzazione completata!", "success");
-        const lastSync = driveClient.getLastSyncTime();
-        if (lastSync) {
-          document.getElementById('settings-drive-last-sync').textContent = lastSync.toLocaleString('it-IT');
-        }
+        UI.updateLastSyncLabel();
       } catch (err) {
         console.error(err);
         UI.showToast("Errore durante la sincronizzazione", "error");
@@ -1789,6 +1788,7 @@ async function syncFromDrive(forceUnlockPrompt = false) {
       await saveAndSync();
     }
     UI.updateSyncStatus('synced');
+    UI.updateLastSyncLabel();
   } catch (err) {
     console.error("Sync error:", err);
     UI.updateSyncStatus('error');

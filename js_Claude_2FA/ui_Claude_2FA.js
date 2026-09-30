@@ -857,6 +857,13 @@ export function updateSyncStatus(status) {
   }
 }
 
+export function updateLastSyncLabel() {
+  const el = document.getElementById('settings-drive-last-sync');
+  if (!el) return;
+  const lastSync = appDriveClient && appDriveClient.getLastSyncTime ? appDriveClient.getLastSyncTime() : null;
+  el.textContent = lastSync ? lastSync.toLocaleString('it-IT') : 'Mai';
+}
+
 export function startAutoLockTimer(minutes) {
   clearTimeout(autoLockTimerId);
   if (minutes > 0) {
