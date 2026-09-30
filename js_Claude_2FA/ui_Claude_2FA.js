@@ -779,6 +779,20 @@ export function openSettings() {
   if (btnEnable2SKDEl) btnEnable2SKDEl.classList.toggle('hidden', !!twoSkdActive);
   if (twoSkdActiveNote) twoSkdActiveNote.classList.toggle('hidden', !twoSkdActive);
 
+  const vaultIdEl = document.getElementById('settings-vault-id');
+  if (vaultIdEl) {
+    try {
+      if (appVault && appVault.envelope && appVault.envelope.salt) {
+        const saltHex = Array.from(appVault.envelope.salt).map(b => b.toString(16).padStart(2,'0')).join('');
+        vaultIdEl.textContent = saltHex.substring(0, 10);
+      } else {
+        vaultIdEl.textContent = 'Sconosciuto';
+      }
+    } catch(e) {
+      vaultIdEl.textContent = 'Errore';
+    }
+  }
+
   modal.classList.remove('hidden');
 }
 
