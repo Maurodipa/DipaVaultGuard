@@ -1159,16 +1159,14 @@ function setupEventListeners() {
         try {
           await driveClient.authenticate();
           UI.showToast("Connesso a Drive. Sincronizzazione in corso...", "info");
-          await saveAndSync();
-          UI.updateLastSyncLabel();
+          await syncFromDrive();
         } catch (err) {
           console.error(err);
           UI.showToast("Errore di connessione a Drive", "error");
         }
       } else {
         UI.showToast("Sincronizzazione in corso...", "info");
-        await saveAndSync();
-        UI.updateLastSyncLabel();
+        await syncFromDrive();
       }
     });
   }
@@ -1220,9 +1218,7 @@ function setupEventListeners() {
       UI.showToast("Sincronizzazione in corso...", "info");
       btnSyncNow.disabled = true;
       try {
-        await saveAndSync();
-        UI.showToast("Sincronizzazione completata!", "success");
-        UI.updateLastSyncLabel();
+        await syncFromDrive();
       } catch (err) {
         console.error(err);
         UI.showToast("Errore durante la sincronizzazione", "error");
@@ -1758,24 +1754,55 @@ async function syncFromDrive(forceUnlockPrompt = false) {
           
           if (remoteTime > localTime) {
             // Non sostituire mai silenziosamente un vault locale protetto da 2SKD con uno
-            // remoto che non lo è: sarebbe un declassamento di sicurezza silenzioso, e la sola
-            // differenza di timestamp non è un segnale affidabile abbastanza per farlo senza
-            // che l'utente se ne accorga (es. se un caricamento precedente su Drive fosse
-            // fallito lasciando lì una copia più vecchia ma con timestamp comunque avanzato).
+          if (true) {
             if (appVault.isTwoSecretKeyDerivationEnabled() && !tempVault.isTwoSecretKeyDerivationEnabled()) {
-              console.warn("Sync automatico da Drive saltato: il vault remoto non ha la protezione 2SKD attiva, quello locale sì.");
-              UI.showToast("Trovata su Drive una versione del vault senza la protezione Secret Key: sync automatico saltato per sicurezza. Usa 'Sincronizza ora' per forzare, se sei sicuro.", "warning");
+              console.warn("Sync automatico da Drive saltato: il vault remoto non ha la protezione 2SKD attiva.");
+              UI.showToast("Trovata su Drive una versione del vault senza la protezione Secret Key: sync saltato per sicurezza.", "warning");
             } else {
-              // Replace local
-              appVault = tempVault;
-              UI.initUI(appVault, driveClient);
-              localStorage.setItem(LOCAL_STORAGE_KEY, arrayBufferToBase64(remoteData));
-              UI.renderItemList(appVault.getAllItems());
-              UI.renderCategories(appVault.getCategories(), null);
-              UI.showToast("Vault aggiornato da Drive", "info");
+              let hasChanges = false;
+              for (const id in tempVault.items) {
+                const rItem = tempVault.items[id];
+                const lItem = appVault.items[id];
+                if (!lItem) {
+                  appVault.items[id] = rItem;
+                  hasChanges = true;
+                } else {
+                  const rTime = new Date(rItem.updatedAt || rItem.createdAt || 0).getTime();
+                  const lTime = new Date(lItem.updatedAt || lItem.createdAt || 0).getTime();
+                  if (rTime > lTime) {
+                    appVault.items[id] = rItem;
+                    hasChanges = true;
+                  }
+                }
+              }
+              for (const cat of tempVault.categories) {
+                if (!appVault.categories.includes(cat)) {
+                  appVault.categories.push(cat);
+                  hasChanges = true;
+                }
+              }
+              let localIsNewer = localTime > remoteTime;
+              for (const id in appVault.items) {
+                 if (!tempVault.items[id]) {
+                   localIsNewer = true;
+                   break;
+                 }
+              }
+              
+              if (hasChanges) {
+                appVault.lastUpdated = new Date().toISOString();
+                await saveAndSync(); 
+                UI.renderItemList(appVault.getAllItems());
+                UI.renderCategories(appVault.getCategories(), null);
+                UI.showToast("Vault unito e sincronizzato con successo", "success");
+              } else if (localIsNewer) {
+                await saveAndSync();
+                UI.showToast("Dati locali caricati su Drive", "success");
+              } else {
+                UI.showToast("Il Vault e' gia' perfettamente allineato", "info");
+              }
             }
-          } else if (localTime > remoteTime) {
-            // Push local to remote
+          }
             saveAndSync();
           }
         } catch (e) {
@@ -1866,3 +1893,4 @@ function checkAndTriggerAutoBackup() {
     }, 2000);
   }
 }
+
