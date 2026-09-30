@@ -880,3 +880,11 @@ export function resetAutoLockTimer() {
 }
 
 
+
+  if (appVault && appVault.envelope && appVault.envelope.salt) {
+    const saltHex = Array.from(appVault.envelope.salt).map(b => b.toString(16).padStart(2,'0')).join('');
+    document.getElementById('settings-vault-id').textContent = saltHex.substring(0, 10);
+  } else {
+    document.getElementById('settings-vault-id').textContent = 'Sconosciuto';
+  }
+
