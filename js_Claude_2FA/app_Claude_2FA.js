@@ -1814,7 +1814,7 @@ async function syncFromDrive(forceUnlockPrompt = false) {
                await saveAndSync();
                UI.showToast("Dati locali caricati su Drive", "success");
              } else {
-               UI.showToast("Il Vault è già perfettamente allineato", "info");
+               UI.showToast("Il Vault  gi perfettamente allineato", "info");
              }
           }
         } catch (e) {
@@ -1832,6 +1832,17 @@ async function syncFromDrive(forceUnlockPrompt = false) {
     UI.updateSyncStatus('error');
   }
 }
+function persistLocalVaultBlob(newBlobBytes) {
+  const existingBase64 = localStorage.getItem(LOCAL_STORAGE_KEY);
+  const newBase64 = arrayBufferToBase64(newBlobBytes);
+  if (existingBase64 && existingBase64 !== newBase64 && (TwoFactor.isBiometricRegistered() || TwoFactor.isTOTPRegistered())) {
+    console.warn("Vault locale sostituito con un contenuto diverso: invalido le registrazioni 2FA locali esistenti.");
+    TwoFactor.clearAllSecondFactors();
+    UI.showToast("Il vault locale e' stato aggiornato con una versione diversa da Drive: sblocco biometrico/TOTP disattivati su questo dispositivo. Riattivali dalle Impostazioni.", "warning");
+  }
+  localStorage.setItem(LOCAL_STORAGE_KEY, newBase64);
+}
+
 function arrayBufferToBase64(buffer) {
   let binary = '';
   const bytes = new Uint8Array(buffer);
