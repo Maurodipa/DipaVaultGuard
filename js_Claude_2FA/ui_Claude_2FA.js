@@ -889,17 +889,38 @@ export function resetAutoLockTimer() {
   }
 
 
-  try {
-    if (appVault && appVault.envelope && appVault.envelope.salt) {
-      const saltHex = Array.from(appVault.envelope.salt).map(b => b.toString(16).padStart(2,'0')).join('');
-      document.getElementById('settings-vault-id').textContent = saltHex.substring(0, 10);
+  if (appVault) {
+    if (appVault.envelope) {
+      if (appVault.envelope.salt) {
+        const saltHex = Array.from(appVault.envelope.salt).map(b => b.toString(16).padStart(2,'0')).join('');
+        document.getElementById('settings-vault-id').textContent = saltHex.substring(0, 10);
+      } else {
+        document.getElementById('settings-vault-id').textContent = 'Sconosciuto (No Salt)';
+      }
     } else {
-      document.getElementById('settings-vault-id').textContent = 'Sconosciuto';
+      document.getElementById('settings-vault-id').textContent = 'Sconosciuto (No Envelope)';
+    }
+  } else {
+    document.getElementById('settings-vault-id').textContent = 'Sconosciuto (No Vault)';
+  }
+
+
+  try {
+    if (appVault) {
+      if (appVault.envelope) {
+        if (appVault.envelope.salt) {
+          const saltHex = Array.from(appVault.envelope.salt).map(b => b.toString(16).padStart(2,'0')).join('');
+          document.getElementById('settings-vault-id').textContent = saltHex.substring(0, 10);
+        } else {
+          document.getElementById('settings-vault-id').textContent = 'No Salt (env keys: ' + Object.keys(appVault.envelope).join(',') + ')';
+        }
+      } else {
+        document.getElementById('settings-vault-id').textContent = 'No Envelope (unlocked? ' + appVault.isUnlocked() + ')';
+      }
+    } else {
+      document.getElementById('settings-vault-id').textContent = 'No appVault variable';
     }
   } catch (e) {
-    document.getElementById('settings-vault-id').textContent = 'Errore ID';
+    document.getElementById('settings-vault-id').textContent = 'Error: ' + e.message;
   }
-  
-  modal.classList.remove('hidden');
-}
 
