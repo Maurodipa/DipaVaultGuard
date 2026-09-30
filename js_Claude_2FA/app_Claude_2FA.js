@@ -1733,85 +1733,96 @@ async function syncFromDrive(forceUnlockPrompt = false) {
         // For simplicity in this version, we will overwrite local if remote is newer, or overwrite remote if local is newer.
         // Usually, proper sync requires merging items. Here we just take the newest vault file.
         // A better implementation would unpack remote and compare timestamps.
-        
         try {
-          // Verify we can open it. Se non abbiamo la password in memoria (sessione sbloccata
-          // con biometria/TOTP), usiamo la vaultKey che comunque già abbiamo.
           const tempVault = new Vault();
+          let unlocked = false;
+          
           if (appPassword) {
-            await tempVault.unlock(appPassword, remoteData);
-          } else if (appVault.vaultKeyRaw) {
-            await tempVault.unlockWithVaultKey(appVault.vaultKeyRaw, remoteData);
-          } else {
-            throw new Error("Nessuna chiave disponibile per verificare il file remoto");
+            try {
+              await tempVault.unlock(appPassword, remoteData);
+              unlocked = true;
+            } catch (e) { console.warn("Auto-unlock failed", e); }
+          } 
+          
+          if (!unlocked && appVault.vaultKeyRaw) {
+            try {
+              await tempVault.unlockWithVaultKey(appVault.vaultKeyRaw, remoteData);
+              unlocked = true;
+            } catch(e) { console.warn("VaultKey unlock failed", e); }
           }
+          
+          if (!unlocked) {
+            const pwd = await showPromptModal({
+              title: 'Autorizzazione richiesta',
+              message: 'Per unire i dati da Google Drive serve la password principale (i due vault sono stati creati separatamente):',
+              inputType: 'password'
+            });
+            if (pwd) {
+              await tempVault.unlock(pwd, remoteData);
+              appPassword = pwd; // Save it for future merges in this session
+              unlocked = true;
+            }
+          }
+          
+          if (!unlocked) throw new Error("Impossibile sbloccare il vault remoto");
           
           const localStats = appVault.getStats();
           const remoteStats = tempVault.getStats();
-          
           const localTime = new Date(localStats.lastUpdated).getTime();
           const remoteTime = new Date(remoteStats.lastUpdated).getTime();
           
-          if (remoteTime > localTime) {
-            // Non sostituire mai silenziosamente un vault locale protetto da 2SKD con uno
-          if (true) {
-            if (appVault.isTwoSecretKeyDerivationEnabled() && !tempVault.isTwoSecretKeyDerivationEnabled()) {
-              console.warn("Sync automatico da Drive saltato: il vault remoto non ha la protezione 2SKD attiva.");
-              UI.showToast("Trovata su Drive una versione del vault senza la protezione Secret Key: sync saltato per sicurezza.", "warning");
-            } else {
-              let hasChanges = false;
-              for (const id in tempVault.items) {
-                const rItem = tempVault.items[id];
-                const lItem = appVault.items[id];
-                if (!lItem) {
-                  appVault.items[id] = rItem;
-                  hasChanges = true;
-                } else {
-                  const rTime = new Date(rItem.updatedAt || rItem.createdAt || 0).getTime();
-                  const lTime = new Date(lItem.updatedAt || lItem.createdAt || 0).getTime();
-                  if (rTime > lTime) {
-                    appVault.items[id] = rItem;
-                    hasChanges = true;
-                  }
-                }
-              }
-              for (const cat of tempVault.categories) {
-                if (!appVault.categories.includes(cat)) {
-                  appVault.categories.push(cat);
-                  hasChanges = true;
-                }
-              }
-              let localIsNewer = localTime > remoteTime;
-              for (const id in appVault.items) {
-                 if (!tempVault.items[id]) {
-                   localIsNewer = true;
-                   break;
+          if (appVault.isTwoSecretKeyDerivationEnabled() && !tempVault.isTwoSecretKeyDerivationEnabled()) {
+             console.warn("Sync automatico da Drive saltato: il vault remoto non ha la protezione 2SKD attiva.");
+             UI.showToast("Trovata su Drive una versione del vault senza la protezione Secret Key: sync saltato per sicurezza.", "warning");
+          } else {
+             let hasChanges = false;
+             for (const id in tempVault.items) {
+               const rItem = tempVault.items[id];
+               const lItem = appVault.items[id];
+               if (!lItem) {
+                 appVault.items[id] = rItem;
+                 hasChanges = true;
+               } else {
+                 const rTime = new Date(rItem.updatedAt || rItem.createdAt || 0).getTime();
+                 const lTime = new Date(lItem.updatedAt || lItem.createdAt || 0).getTime();
+                 if (rTime > lTime) {
+                   appVault.items[id] = rItem;
+                   hasChanges = true;
                  }
-              }
-              
-              if (hasChanges) {
-                appVault.lastUpdated = new Date().toISOString();
-                await saveAndSync(); 
-                UI.renderItemList(appVault.getAllItems());
-                UI.renderCategories(appVault.getCategories(), null);
-                UI.showToast("Vault unito e sincronizzato con successo", "success");
-              } else if (localIsNewer) {
-                await saveAndSync();
-                UI.showToast("Dati locali caricati su Drive", "success");
-              } else {
-                UI.showToast("Il Vault e' gia' perfettamente allineato", "info");
-              }
-            }
-          }
-            saveAndSync();
+               }
+             }
+             for (const cat of tempVault.categories) {
+               if (!appVault.categories.includes(cat)) {
+                 appVault.categories.push(cat);
+                 hasChanges = true;
+               }
+             }
+             let localIsNewer = localTime > remoteTime;
+             for (const id in appVault.items) {
+                if (!tempVault.items[id]) {
+                  localIsNewer = true;
+                  break;
+                }
+             }
+             if (hasChanges) {
+               appVault.lastUpdated = new Date().toISOString();
+               await saveAndSync(); 
+               UI.renderItemList(appVault.getAllItems());
+               UI.renderCategories(appVault.getCategories(), null);
+               UI.showToast("Vault unito e sincronizzato con successo", "success");
+             } else if (localIsNewer) {
+               await saveAndSync();
+               UI.showToast("Dati locali caricati su Drive", "success");
+             } else {
+               UI.showToast("Il Vault � gi� perfettamente allineato", "info");
+             }
           }
         } catch (e) {
-          console.warn("Could not unlock remote vault with current password. Passwords might differ.");
-        }
-      }
+          console.warn("Merge fallito:", e);
+          UI.showToast("Impossibile unire i vault: password errata o dati non compatibili", "error");
+          throw e; // Rilancia per far fallire il try globale e mostrare la nuvola rossa
+        }      }
     } else if (appVault.isUnlocked()) {
-      // Se su Drive non esiste ancora il file del vault, effettua subito il primo
-      // caricamento della copia locale sbloccata, per non lasciare Drive vuoto.
       await saveAndSync();
     }
     UI.updateSyncStatus('synced');
@@ -1821,36 +1832,6 @@ async function syncFromDrive(forceUnlockPrompt = false) {
     UI.updateSyncStatus('error');
   }
 }
-
-
-// --- Helper Functions for Base64 <-> ArrayBuffer ---
-
-// Salva il blob nel vault locale, invalidando SEMPRE eventuali registrazioni biometriche/TOTP
-// esistenti su questo dispositivo quando il blob arriva da un ripristino/connessione a Drive.
-// Perché "sempre" e non solo quando il contenuto cambia visibilmente: quella registrazione
-// protegge la vaultKey di QUALUNQUE stato del vault fosse attivo quando è stata creata, e non
-// c'è modo affidabile di verificare da qui se corrisponde ancora a quella corrente — il solo
-// confronto byte-a-byte del blob locale prima/dopo si è dimostrato insufficiente (due sessioni
-// di test diverse possono scaricare lo stesso identico blob da Drive pur avendo registrazioni
-// biometriche fatte in momenti diversi, non necessariamente coerenti tra loro). Meglio
-// richiedere sempre una nuova registrazione esplicita dopo un ripristino da Drive, che rischiare
-// un blocco fuori silenzioso.
-// Salva il blob nel vault locale. Se il contenuto sta per cambiare rispetto a quello che
-// c'era prima (es. per un ripristino da Drive di una versione diversa, magari da un altro
-// dispositivo), invalida per sicurezza eventuali registrazioni biometriche/TOTP esistenti su
-// questo dispositivo: proteggevano la vaultKey della versione precedente, che potrebbe non
-// essere più quella giusta.
-function persistLocalVaultBlob(newBlobBytes) {
-  const existingBase64 = localStorage.getItem(LOCAL_STORAGE_KEY);
-  const newBase64 = arrayBufferToBase64(newBlobBytes);
-  if (existingBase64 && existingBase64 !== newBase64 && (TwoFactor.isBiometricRegistered() || TwoFactor.isTOTPRegistered())) {
-    console.warn("Vault locale sostituito con un contenuto diverso: invalido le registrazioni 2FA locali esistenti perché potrebbero non corrispondere più alla nuova vaultKey.");
-    TwoFactor.clearAllSecondFactors();
-    UI.showToast("Il vault locale è stato aggiornato con una versione diversa da Drive: sblocco biometrico/TOTP disattivati su questo dispositivo. Riattivali dalle Impostazioni.", "warning");
-  }
-  localStorage.setItem(LOCAL_STORAGE_KEY, newBase64);
-}
-
 function arrayBufferToBase64(buffer) {
   let binary = '';
   const bytes = new Uint8Array(buffer);
@@ -1893,4 +1874,6 @@ function checkAndTriggerAutoBackup() {
     }, 2000);
   }
 }
+
+
 
