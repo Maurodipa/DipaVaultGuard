@@ -676,6 +676,11 @@ function setupEventListeners() {
     saveAndSync();
     UI.renderItemList(appVault.getAllItems());
     UI.renderCategories(appVault.getCategories(), null);
+    // Backup ad ogni modifica (se l'opzione è attiva)
+    const settings = JSON.parse(localStorage.getItem('dipavaultguard_settings') || '{}');
+    if (settings.autoBackupIntervalDays === 'on-change') {
+      doAutoBackup('modifica');
+    }
   });
 
   document.addEventListener('request-auto-sync', () => {
@@ -1869,19 +1874,25 @@ function base64ToArrayBuffer(base64) {
 function checkAndTriggerAutoBackup() {
   const settings = JSON.parse(localStorage.getItem('dipavaultguard_settings') || '{}');
   const intervalDays = settings.autoBackupIntervalDays;
-  if (!intervalDays || intervalDays <= 0) return;
+  // 'on-change' è gestito dal listener vault-updated; valori <= 0 significa disattivato
+  if (!intervalDays || intervalDays === 'on-change' || Number(intervalDays) <= 0) return;
   
   const lastBackupStr = localStorage.getItem('dipavaultguard_last_auto_backup');
   const now = Date.now();
-  if (!lastBackupStr || (now - parseInt(lastBackupStr)) >= intervalDays * 24 * 60 * 60 * 1000) {
-    // Wait a couple of seconds so the UI finishes rendering and the user isn't interrupted
-    setTimeout(() => {
-      const btn = document.getElementById('btn-download-backup');
-      if (btn) btn.click();
-      localStorage.setItem('dipavaultguard_last_auto_backup', now.toString());
-      UI.showToast(`Backup automatico (${intervalDays}gg) salvato nei Download!`, "info", 5000);
-    }, 2000);
+  if (!lastBackupStr || (now - parseInt(lastBackupStr)) >= Number(intervalDays) * 24 * 60 * 60 * 1000) {
+    doAutoBackup(`${intervalDays}gg`);
   }
+}
+
+// Scarica silenziosamente il backup cifrato .bin e aggiorna il timestamp.
+// `label` è la stringa mostrata nel toast (es. "1gg", "modifica").
+function doAutoBackup(label) {
+  setTimeout(() => {
+    const btn = document.getElementById('btn-download-backup');
+    if (btn) btn.click();
+    localStorage.setItem('dipavaultguard_last_auto_backup', Date.now().toString());
+    UI.showToast(`Backup automatico (${label}) salvato nei Download!`, 'info', 5000);
+  }, 1500);
 }
 
 

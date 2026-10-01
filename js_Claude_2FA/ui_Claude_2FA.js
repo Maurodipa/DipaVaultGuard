@@ -364,9 +364,9 @@ export function initUI(vault, driveClient) {
   });
   
   document.getElementById('settings-backup-interval').addEventListener('change', (e) => {
-    const days = parseInt(e.target.value);
+    const val = e.target.value;
     const settings = JSON.parse(localStorage.getItem('dipavaultguard_settings') || '{}');
-    settings.autoBackupIntervalDays = days;
+    settings.autoBackupIntervalDays = val === 'on-change' ? 'on-change' : parseInt(val);
     localStorage.setItem('dipavaultguard_settings', JSON.stringify(settings));
   });
   
