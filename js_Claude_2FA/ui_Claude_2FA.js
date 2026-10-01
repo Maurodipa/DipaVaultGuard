@@ -749,7 +749,8 @@ export function openSettings() {
   }
   
   if (appDriveClient && appDriveClient.isAuthenticated()) {
-    document.getElementById('settings-drive-status').textContent = `${STRINGS.connected} (${appDriveClient.userInfo?.email || ''})`;
+    const email = appDriveClient.userInfo?.email || localStorage.getItem('dipavaultguard-drive-email') || '';
+    document.getElementById('settings-drive-status').textContent = `${STRINGS.connected}${email ? ' (' + email + ')' : ''}`;
     document.getElementById('btn-settings-drive-toggle').textContent = STRINGS.disconnect;
     document.querySelectorAll('.drive-connected-only').forEach(el => el.classList.remove('hidden'));
     
