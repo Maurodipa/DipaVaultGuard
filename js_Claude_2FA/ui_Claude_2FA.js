@@ -183,12 +183,30 @@ export function initUI(vault, driveClient) {
       renderItemList(appVault.getAllItems());
     }
 
-    // Mobile menu toggle
-    if (e.target.closest('#btn-mobile-menu')) {
-      document.getElementById('sidebar').classList.add('mobile-open');
-    }
-    if (e.target.id === 'sidebar-backdrop') {
+
+    // Helper per chiudere la sidebar su mobile
+    function closeSidebar() {
       document.getElementById('sidebar').classList.remove('mobile-open');
+    }
+
+    // Mobile menu toggle: apre se chiusa, chiude se aperta
+    if (e.target.closest('#btn-mobile-menu')) {
+      const sidebar = document.getElementById('sidebar');
+      sidebar.classList.toggle('mobile-open');
+      return;
+    }
+    // Backdrop: chiude la sidebar
+    if (e.target.id === 'sidebar-backdrop') {
+      closeSidebar();
+      return;
+    }
+    // Campo ricerca: chiude la sidebar
+    if (e.target.closest('#search-input')) {
+      closeSidebar();
+    }
+    // Click fuori dalla sidebar (su mobile) su qualsiasi area del main content
+    if (e.target.closest('.main-content') && document.getElementById('sidebar').classList.contains('mobile-open')) {
+      closeSidebar();
     }
 
     // FAB add
