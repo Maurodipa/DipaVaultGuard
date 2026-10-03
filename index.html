@@ -300,11 +300,13 @@
     <!-- Screen Dashboard -->
     <section id="screen-dashboard" class="screen hidden">
         <header class="dashboard-header">
-            <div class="header-left">
+            <div class="header-left" style="gap: 0.25rem;">
                 <button id="btn-mobile-menu" class="btn-icon d-md-none"><svg class="icon"><use href="#icon-menu"></use></svg></button>
-                <div class="logo-small">
+                <button id="btn-settings" class="btn-icon" title="Impostazioni"><svg class="icon"><use href="#icon-settings"></use></svg></button>
+                <button id="btn-sync" class="btn-icon" title="Sincronizzazione"><svg class="icon" id="sync-icon"><use href="#icon-cloud"></use></svg></button>
+                <div class="logo-small ml-2">
                     <svg class="icon icon-shield text-primary"><use href="#icon-shield"></use></svg>
-                    <span class="d-none d-sm-inline">DipaVaultGuard</span>
+                    <span class="d-none d-md-inline">DipaVaultGuard</span>
                 </div>
             </div>
             
@@ -316,8 +318,7 @@
             </div>
             
             <div class="header-right">
-                <button id="btn-sync" class="btn-icon" title="Sincronizzazione"><svg class="icon" id="sync-icon"><use href="#icon-cloud"></use></svg></button>
-                <button id="btn-settings" class="btn-icon" title="Impostazioni"><svg class="icon"><use href="#icon-settings"></use></svg></button>
+                <!-- Spazio vuoto per bilanciare il flexbox, i pulsanti sono stati spostati a sinistra -->
             </div>
         </header>
         
