@@ -20,6 +20,9 @@ export class GoogleDriveClient {
         callback: async (tokenResponse) => {
           if (tokenResponse && tokenResponse.access_token) {
             this.accessToken = tokenResponse.access_token;
+            // Segna come connesso in modo persistente, così openSettings()
+            // mostrerà "Disconnetti" anche prima del prossimo silentRefresh
+            localStorage.setItem('dipavaultguard-drive-connected', 'true');
             if (this._resolveAuth) {
               if (this._fetchUserInfoOnAuth) {
                 try {
@@ -99,10 +102,18 @@ export class GoogleDriveClient {
     }
     this.accessToken = null;
     this.userInfo = null;
+    // Pulisce il flag persistente: alla prossima apertura delle impostazioni
+    // il pulsante mostrerà correttamente "Connetti"
+    localStorage.removeItem('dipavaultguard-drive-connected');
   }
 
   isAuthenticated() {
-    return !!this.accessToken;
+    // Controlla la memoria prima, poi il flag persistente in localStorage come
+    // fallback per i casi in cui il token è in memoria ma le impostazioni vengono
+    // riaperte dopo un silentRefresh (in cui l'accessToken è già valido ma il
+    // controllo avviene prima del refresh).
+    if (this.accessToken) return true;
+    return localStorage.getItem('dipavaultguard-drive-connected') === 'true';
   }
 
   async getUserInfo() {
