@@ -1,4 +1,4 @@
-const CACHE_NAME = 'dipavaultguard-v71';
+const CACHE_NAME = 'dipavaultguard-v72';
 // NOTA: percorsi RELATIVI (senza "/" iniziale). Il sito vive in un sottopercorso su GitHub
 // Pages (es. https://tuonome.github.io/nome-repo/): un percorso assoluto come "/index.html"
 // punterebbe alla radice del dominio invece che alla cartella del sito, e non verrebbe mai
@@ -6,6 +6,7 @@ const CACHE_NAME = 'dipavaultguard-v71';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
+  './confronta.html',
   './css_Claude_2FA/style_Claude_2FA.css',
   './js_Claude_2FA/app_Claude_2FA.js',
   './js_Claude_2FA/ui_Claude_2FA.js',

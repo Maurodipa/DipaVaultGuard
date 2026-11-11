@@ -1,0 +1,1203 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Confronto Backup — DipaVaultGuard</title>
+    <link rel="stylesheet" href="./css_Claude_2FA/style_Claude_2FA.css">
+    <style>
+        .diff-container {
+            max-width: 1050px;
+            margin: 0 auto;
+            padding: 2rem 1rem 4rem;
+        }
+        .diff-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .diff-header-title {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .diff-header-title h1 {
+            font-size: 1.5rem;
+            color: var(--text-primary);
+        }
+        .file-drop-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        @media (max-width: 768px) {
+            .file-drop-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        .file-drop-zone {
+            background: var(--surface);
+            border: 2px dashed var(--border);
+            border-radius: var(--radius-lg);
+            padding: 1.75rem 1.25rem;
+            text-align: center;
+            cursor: pointer;
+            transition: var(--transition);
+            position: relative;
+        }
+        .file-drop-zone:hover, .file-drop-zone.dragover {
+            border-color: var(--primary);
+            background: var(--primary-light);
+        }
+        .file-drop-zone.file-loaded {
+            border-style: solid;
+            border-color: var(--success);
+            background: #f0fdf4;
+        }
+        .file-info-badge {
+            display: inline-block;
+            margin-top: 0.5rem;
+            font-size: 0.8rem;
+            padding: 0.2rem 0.6rem;
+            border-radius: 999px;
+            font-weight: 500;
+        }
+        .badge-2skd {
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fde68a;
+        }
+        .badge-v1 {
+            background: #e0f2fe;
+            color: #0369a1;
+        }
+        .cred-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: var(--shadow-sm);
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .summary-card {
+            background: var(--surface);
+            border-radius: var(--radius-md);
+            padding: 1rem;
+            text-align: center;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-sm);
+        }
+        .summary-card.stat-added { border-top: 4px solid var(--success); }
+        .summary-card.stat-mod { border-top: 4px solid var(--warning); }
+        .summary-card.stat-del { border-top: 4px solid var(--danger); }
+        .summary-card.stat-same { border-top: 4px solid var(--text-muted); }
+        .summary-num {
+            font-size: 1.75rem;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+        .summary-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+        .filter-bar {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+        .filter-btn {
+            padding: 0.4rem 0.8rem;
+            border-radius: 999px;
+            font-size: 0.85rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .filter-btn.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+        .diff-card {
+            background: var(--surface);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+            box-shadow: var(--shadow-sm);
+            transition: var(--transition);
+        }
+        .diff-card.diff-added {
+            border-left: 5px solid var(--success);
+            background: #fcfdfc;
+        }
+        .diff-card.diff-removed {
+            border-left: 5px solid var(--danger);
+            background: #fffafa;
+        }
+        .diff-card.diff-modified {
+            border-left: 5px solid var(--warning);
+            background: #fffdfa;
+        }
+        .diff-card.diff-identical {
+            border-left: 5px solid #cbd5e1;
+            opacity: 0.85;
+        }
+        .diff-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+        .diff-item-title {
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .diff-tag {
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+        .tag-added { background: #dcfce7; color: #166534; }
+        .tag-removed { background: #fee2e2; color: #991b1b; }
+        .tag-modified { background: #fef3c7; color: #92400e; }
+        .tag-identical { background: #f1f5f9; color: #475569; }
+
+        .diff-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+        }
+        .diff-table th, .diff-table td {
+            padding: 0.5rem 0.75rem;
+            text-align: left;
+            border-top: 1px solid var(--border);
+            vertical-align: top;
+        }
+        .diff-table th {
+            width: 120px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            background: rgba(0,0,0,0.01);
+        }
+        .diff-val-old {
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            display: inline-block;
+            word-break: break-all;
+        }
+        .diff-val-new {
+            background: #dcfce7;
+            color: #166534;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            display: inline-block;
+            word-break: break-all;
+        }
+        .masked-pwd {
+            font-family: var(--font-mono);
+            letter-spacing: 2px;
+        }
+        .raw-pwd {
+            font-family: var(--font-mono);
+            background: #f1f5f9;
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+        }
+        .btn-mini {
+            padding: 0.15rem 0.4rem;
+            font-size: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--surface);
+            cursor: pointer;
+            margin-left: 0.35rem;
+        }
+        .btn-mini:hover { background: var(--bg); }
+        .notes-box {
+            white-space: pre-wrap;
+            font-family: inherit;
+            font-size: 0.85rem;
+            padding: 0.4rem 0.6rem;
+            border-radius: 4px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        .toast-popup {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: #1e293b;
+            color: white;
+            padding: 0.75rem 1.25rem;
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-lg);
+            font-size: 0.9rem;
+            z-index: 9999;
+            animation: fadeIn 0.2s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .security-banner {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: var(--radius-md);
+            padding: 0.75rem 1rem;
+            margin-bottom: 1.5rem;
+            font-size: 0.85rem;
+            color: #1e40af;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="diff-container">
+        <!-- Header -->
+        <header class="diff-header">
+            <div class="diff-header-title">
+                <svg class="icon icon-shield text-primary" style="width: 32px; height: 32px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+                <div>
+                    <h1>Confronto Backup Vault</h1>
+                    <p class="text-sm text-muted">Confronta visivamente due file cifrati (.bin) e scopri aggiunte, modifiche o eliminazioni</p>
+                </div>
+            </div>
+            <a href="index.html" class="btn btn-secondary btn-sm">
+                ← Torna a DipaVaultGuard
+            </a>
+        </header>
+
+        <div class="security-banner">
+            <svg style="width:20px;height:20px;flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+            <div>
+                <strong>Elaborazione 100% Offline:</strong> I file e le password vengono decifrati unicamente nella memoria volatile di questo browser tramite la Web Crypto API. Nessun byte viene salvato né inviato via rete.
+            </div>
+        </div>
+
+        <!-- File selection boxes -->
+        <div class="file-drop-grid">
+            <!-- File A -->
+            <div class="file-drop-zone" id="drop-zone-a" onclick="document.getElementById('file-input-a').click()">
+                <input type="file" id="file-input-a" accept=".bin,.enc" class="hidden">
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;">📁</div>
+                <h3 style="font-size: 1.05rem; margin-bottom: 0.25rem;">Backup A (Precedente / Riferimento)</h3>
+                <p class="text-xs text-muted" id="file-desc-a">Trascina qui il primo file .bin oppure clicca per selezionarlo</p>
+                <div id="file-meta-a" class="mt-2 hidden"></div>
+            </div>
+
+            <!-- File B -->
+            <div class="file-drop-zone" id="drop-zone-b" onclick="document.getElementById('file-input-b').click()">
+                <input type="file" id="file-input-b" accept=".bin,.enc" class="hidden">
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;">📁</div>
+                <h3 style="font-size: 1.05rem; margin-bottom: 0.25rem;">Backup B (Recente / Da verificare)</h3>
+                <p class="text-xs text-muted" id="file-desc-b">Trascina qui il secondo file .bin oppure clicca per selezionarlo</p>
+                <div id="file-meta-b" class="mt-2 hidden"></div>
+            </div>
+        </div>
+
+        <!-- Credentials Card -->
+        <div class="cred-card">
+            <h3 style="font-size: 1.1rem; margin-bottom: 1rem;">Credenziali per la decifratura</h3>
+
+            <div class="mb-3">
+                <label class="checkbox-label text-sm">
+                    <input type="checkbox" id="check-same-creds" checked>
+                    <span>I due file utilizzano la stessa password principale (e Secret Key se attiva)</span>
+                </label>
+            </div>
+
+            <!-- Common Credentials -->
+            <div id="group-common-creds">
+                <div class="form-group">
+                    <label for="pwd-common">Password Principale</label>
+                    <div class="input-with-icon">
+                        <input type="password" id="pwd-common" placeholder="Inserisci la password principale del vault" autocomplete="off">
+                        <button type="button" class="btn-icon" onclick="toggleVisibility('pwd-common')">👁️</button>
+                    </div>
+                </div>
+
+                <div class="form-group hidden" id="group-secret-key-common">
+                    <label for="sk-common">Secret Key (2SKD)</label>
+                    <input type="text" id="sk-common" placeholder="es. DVG2-XXXXXX-XXXXXX-XXXXXX-XXXXXX" autocomplete="off">
+                    <span class="text-xs text-muted">Uno o entrambi i file richiedono la Secret Key ad alta entropia.</span>
+                </div>
+            </div>
+
+            <!-- Separate Credentials (hidden by default) -->
+            <div id="group-separate-creds" class="hidden">
+                <div class="form-row">
+                    <div class="flex-half">
+                        <h4>Credenziali Backup A</h4>
+                        <div class="form-group mt-2">
+                            <label for="pwd-a">Password A</label>
+                            <input type="password" id="pwd-a" placeholder="Password Backup A">
+                        </div>
+                        <div class="form-group hidden" id="group-sk-a">
+                            <label for="sk-a">Secret Key A</label>
+                            <input type="text" id="sk-a" placeholder="DVG2-...">
+                        </div>
+                    </div>
+                    <div class="flex-half">
+                        <h4>Credenziali Backup B</h4>
+                        <div class="form-group mt-2">
+                            <label for="pwd-b">Password B</label>
+                            <input type="password" id="pwd-b" placeholder="Password Backup B">
+                        </div>
+                        <div class="form-group hidden" id="group-sk-b">
+                            <label for="sk-b">Secret Key B</label>
+                            <input type="text" id="sk-b" placeholder="DVG2-...">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button type="button" class="btn btn-primary btn-block mt-3" id="btn-compare" style="padding: 0.75rem; font-size: 1.05rem;" disabled>
+                🔓 Decifra e Confronta i Vault
+            </button>
+            <div id="compare-status" class="text-center text-sm text-muted mt-2 hidden"></div>
+        </div>
+
+        <!-- Results Section (hidden until comparison is performed) -->
+        <div id="results-section" class="hidden">
+            <!-- Metadata Comparison Banner -->
+            <div style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.5rem; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;" class="text-sm">
+                <div>
+                    <strong>Data Backup A:</strong> <span id="meta-date-a" class="text-muted">-</span>
+                </div>
+                <div>
+                    <strong>Data Backup B:</strong> <span id="meta-date-b" class="text-muted">-</span>
+                </div>
+                <div>
+                    <strong>Esito date:</strong> <span id="meta-date-diff" class="text-primary font-bold">-</span>
+                </div>
+            </div>
+
+            <!-- Summary KPI Grid -->
+            <div class="summary-grid">
+                <div class="summary-card stat-added">
+                    <div class="summary-num text-success" id="stat-added">0</div>
+                    <div class="summary-label">Voci Nuove in B</div>
+                </div>
+                <div class="summary-card stat-mod">
+                    <div class="summary-num text-warning" id="stat-mod">0</div>
+                    <div class="summary-label">Voci Modificate</div>
+                </div>
+                <div class="summary-card stat-del">
+                    <div class="summary-num text-danger" id="stat-del">0</div>
+                    <div class="summary-label">Voci Eliminate in B</div>
+                </div>
+                <div class="summary-card stat-same">
+                    <div class="summary-num text-muted" id="stat-same">0</div>
+                    <div class="summary-label">Voci Invariate</div>
+                </div>
+            </div>
+
+            <!-- Categories diff notice if any -->
+            <div id="categories-diff-box" class="hidden" style="background: #f8fafc; border-left: 4px solid var(--primary); padding: 0.75rem 1rem; margin-bottom: 1.5rem; border-radius: 4px; font-size: 0.85rem;"></div>
+
+            <!-- Filters & Actions -->
+            <div style="display:flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">
+                <div class="filter-bar" style="margin-bottom:0;">
+                    <button class="filter-btn active" data-filter="diffs" id="btn-filter-diffs">Solo Differenze (<span id="cnt-diffs">0</span>)</button>
+                    <button class="filter-btn" data-filter="mod">Modificate (<span id="cnt-mod">0</span>)</button>
+                    <button class="filter-btn" data-filter="added">Aggiunte (<span id="cnt-added">0</span>)</button>
+                    <button class="filter-btn" data-filter="removed">Rimosse (<span id="cnt-del">0</span>)</button>
+                    <button class="filter-btn" data-filter="same">Invariate (<span id="cnt-same">0</span>)</button>
+                    <button class="filter-btn" data-filter="all">Tutte (<span id="cnt-all">0</span>)</button>
+                </div>
+
+                <div style="display:flex; gap: 0.5rem; flex-grow: 1; max-width: 350px;">
+                    <input type="text" id="diff-search" placeholder="Cerca tra le voci..." style="padding: 0.4rem 0.6rem; font-size: 0.85rem;">
+                    <button class="btn btn-secondary btn-sm" id="btn-export-report" title="Esporta resoconto testuale">
+                        📥 Report
+                    </button>
+                </div>
+            </div>
+
+            <!-- List of Diff Cards -->
+            <div id="diff-list"></div>
+        </div>
+    </div>
+
+    <!-- Cryptographic Engine and Comparison Script (Self-Contained) -->
+    <script>
+        // ----------------------------------------------------
+        // Web Crypto Implementation (Compatible with DipaVaultGuard v1 & 2SKD)
+        // ----------------------------------------------------
+        const MAGIC_2SKD = new Uint8Array([0x32, 0x53, 0x4B, 0x44]); // ASCII "2SKD"
+        const SECRET_KEY_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+
+        function hasMagicPrefix(packedData) {
+            const data = packedData instanceof Uint8Array ? packedData : new Uint8Array(packedData);
+            if (data.length < MAGIC_2SKD.length) return false;
+            for (let i = 0; i < MAGIC_2SKD.length; i++) {
+                if (data[i] !== MAGIC_2SKD[i]) return false;
+            }
+            return true;
+        }
+
+        function isSecretKeyRequired(packedData) {
+            return hasMagicPrefix(packedData);
+        }
+
+        function parseSecretKey(formatted) {
+            const withoutPrefix = formatted.trim().toUpperCase().replace(/^DVG2-?/, '');
+            const clean = withoutPrefix.replace(/[^0-9A-Z]/g, '');
+            let bits = '';
+            for (const c of clean) {
+                const val = SECRET_KEY_ALPHABET.indexOf(c);
+                if (val === -1) continue;
+                bits += val.toString(2).padStart(5, '0');
+            }
+            const bytes = [];
+            for (let i = 0; i + 8 <= bits.length; i += 8) {
+                bytes.push(parseInt(bits.substring(i, i + 8), 2));
+            }
+            return new Uint8Array(bytes);
+        }
+
+        async function deriveKeyFromPasswordOnly(password, salt) {
+            const enc = new TextEncoder();
+            const passwordKey = await crypto.subtle.importKey(
+                "raw", enc.encode(password), { name: "PBKDF2" }, false, ["deriveBits", "deriveKey"]
+            );
+            return await crypto.subtle.deriveKey(
+                { name: "PBKDF2", salt, iterations: 600000, hash: "SHA-256" },
+                passwordKey, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]
+            );
+        }
+
+        async function deriveKeyFromPasswordAndSecretKey(password, secretKeyRaw, salt) {
+            const enc = new TextEncoder();
+            const passwordKey = await crypto.subtle.importKey(
+                "raw", enc.encode(password), { name: "PBKDF2" }, false, ["deriveBits"]
+            );
+            const passwordBits = new Uint8Array(await crypto.subtle.deriveBits(
+                { name: "PBKDF2", salt, iterations: 600000, hash: "SHA-256" }, passwordKey, 256
+            ));
+
+            const secretMaterial = await crypto.subtle.importKey("raw", secretKeyRaw, { name: "HKDF" }, false, ["deriveBits"]);
+            const secretBits = new Uint8Array(await crypto.subtle.deriveBits(
+                { name: "HKDF", hash: "SHA-256", salt, info: enc.encode("dipavaultguard-2skd") }, secretMaterial, 256
+            ));
+
+            const combined = new Uint8Array(32);
+            for (let i = 0; i < 32; i++) combined[i] = passwordBits[i] ^ secretBits[i];
+
+            return await crypto.subtle.importKey("raw", combined, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+        }
+
+        async function decryptVaultBlob(password, packedData, secretKeyStr = '') {
+            const requiresSecretKey = hasMagicPrefix(packedData);
+            const body = requiresSecretKey ? packedData.slice(MAGIC_2SKD.length) : packedData;
+
+            const salt = body.slice(0, 16);
+            const ivKey = body.slice(16, 28);
+            const encryptedVaultKey = body.slice(28, 76);
+
+            let derivedKey;
+            if (requiresSecretKey) {
+                if (!secretKeyStr || !secretKeyStr.trim()) {
+                    throw new Error("SECRET_KEY_REQUIRED");
+                }
+                const secretKeyRaw = parseSecretKey(secretKeyStr);
+                derivedKey = await deriveKeyFromPasswordAndSecretKey(password, secretKeyRaw, salt);
+            } else {
+                derivedKey = await deriveKeyFromPasswordOnly(password, salt);
+            }
+
+            const vaultKeyRawBuffer = await crypto.subtle.decrypt(
+                { name: "AES-GCM", iv: ivKey }, derivedKey, encryptedVaultKey
+            );
+            const vaultKeyRaw = new Uint8Array(vaultKeyRawBuffer);
+
+            const iv = body.slice(76, 88);
+            const encryptedData = body.slice(88);
+
+            const vaultKey = await crypto.subtle.importKey(
+                "raw", vaultKeyRaw, { name: "AES-GCM" }, false, ["decrypt"]
+            );
+
+            const decryptedData = await crypto.subtle.decrypt(
+                { name: "AES-GCM", iv }, vaultKey, encryptedData
+            );
+
+            const dec = new TextDecoder();
+            const jsonStr = dec.decode(decryptedData);
+            return JSON.parse(jsonStr);
+        }
+
+        // ----------------------------------------------------
+        // UI & Comparison Controller
+        // ----------------------------------------------------
+        let fileAData = null;
+        let fileAName = '';
+        let fileBData = null;
+        let fileBName = '';
+
+        let vaultA = null;
+        let vaultB = null;
+        let comparisonResults = [];
+        let currentFilter = 'diffs';
+
+        // Toast Helper
+        function showToast(msg) {
+            const t = document.createElement('div');
+            t.className = 'toast-popup';
+            t.textContent = msg;
+            document.body.appendChild(t);
+            setTimeout(() => {
+                t.style.opacity = '0';
+                t.style.transition = 'opacity 0.3s ease';
+                setTimeout(() => t.remove(), 300);
+            }, 3000);
+        }
+
+        function toggleVisibility(inputId) {
+            const el = document.getElementById(inputId);
+            if (el) {
+                el.type = el.type === 'password' ? 'text' : 'password';
+            }
+        }
+
+        // File Selection Handlers
+        function setupDropZone(dropId, inputId, onFileLoaded) {
+            const dropZone = document.getElementById(dropId);
+            const fileInput = document.getElementById(inputId);
+
+            ['dragenter', 'dragover'].forEach(eName => {
+                dropZone.addEventListener(eName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropZone.classList.add('dragover');
+                });
+            });
+
+            ['dragleave', 'drop'].forEach(eName => {
+                dropZone.addEventListener(eName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropZone.classList.remove('dragover');
+                });
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                const files = e.dataTransfer.files;
+                if (files.length > 0) processFile(files[0]);
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) processFile(e.target.files[0]);
+            });
+
+            function processFile(file) {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    const u8 = new Uint8Array(ev.target.result);
+                    onFileLoaded(file.name, u8, file.size, file.lastModified);
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        }
+
+        setupDropZone('drop-zone-a', 'file-input-a', (name, u8, size, lastMod) => {
+            fileAData = u8;
+            fileAName = name;
+            updateDropZoneUI('a', name, size, lastMod, isSecretKeyRequired(u8));
+            checkCanCompare();
+        });
+
+        setupDropZone('drop-zone-b', 'file-input-b', (name, u8, size, lastMod) => {
+            fileBData = u8;
+            fileBName = name;
+            updateDropZoneUI('b', name, size, lastMod, isSecretKeyRequired(u8));
+            checkCanCompare();
+        });
+
+        function updateDropZoneUI(type, name, size, lastMod, is2skd) {
+            const zone = document.getElementById(`drop-zone-${type}`);
+            const desc = document.getElementById(`file-desc-${type}`);
+            const meta = document.getElementById(`file-meta-${type}`);
+
+            zone.classList.add('file-loaded');
+            desc.textContent = `${name} (${(size / 1024).toFixed(1)} KB)`;
+            
+            meta.classList.remove('hidden');
+            meta.innerHTML = `
+                <span class="file-info-badge ${is2skd ? 'badge-2skd' : 'badge-v1'}">
+                    ${is2skd ? '🔒 Protetto con Secret Key (2SKD)' : '🔑 Standard (Password)'}
+                </span>
+            `;
+
+            // Adjust Secret Key input visibility
+            updateSecretKeyInputsVisibility();
+        }
+
+        function updateSecretKeyInputsVisibility() {
+            const need2SKDA = fileAData && isSecretKeyRequired(fileAData);
+            const need2SKDB = fileBData && isSecretKeyRequired(fileBData);
+            const sameCreds = document.getElementById('check-same-creds').checked;
+
+            if (sameCreds) {
+                document.getElementById('group-secret-key-common').classList.toggle('hidden', !(need2SKDA || need2SKDB));
+            } else {
+                document.getElementById('group-sk-a').classList.toggle('hidden', !need2SKDA);
+                document.getElementById('group-sk-b').classList.toggle('hidden', !need2SKDB);
+            }
+        }
+
+        document.getElementById('check-same-creds').addEventListener('change', (e) => {
+            const same = e.target.checked;
+            document.getElementById('group-common-creds').classList.toggle('hidden', !same);
+            document.getElementById('group-separate-creds').classList.toggle('hidden', same);
+            updateSecretKeyInputsVisibility();
+        });
+
+        function checkCanCompare() {
+            const can = !!(fileAData && fileBData);
+            document.getElementById('btn-compare').disabled = !can;
+        }
+
+        // Compare Action
+        document.getElementById('btn-compare').addEventListener('click', async () => {
+            const sameCreds = document.getElementById('check-same-creds').checked;
+            const statusEl = document.getElementById('compare-status');
+            const btn = document.getElementById('btn-compare');
+
+            statusEl.classList.remove('hidden');
+            statusEl.textContent = "Decifratura in corso con PBKDF2 (600.000 iterazioni)...";
+            btn.disabled = true;
+
+            let pwdA = '', pwdB = '', skA = '', skB = '';
+            if (sameCreds) {
+                pwdA = pwdB = document.getElementById('pwd-common').value;
+                skA = skB = document.getElementById('sk-common').value;
+            } else {
+                pwdA = document.getElementById('pwd-a').value;
+                pwdB = document.getElementById('pwd-b').value;
+                skA = document.getElementById('sk-a').value;
+                skB = document.getElementById('sk-b').value;
+            }
+
+            if (!pwdA || !pwdB) {
+                alert("Inserisci la password principale per procedere.");
+                btn.disabled = false;
+                statusEl.classList.add('hidden');
+                return;
+            }
+
+            try {
+                // Decrypt Vault A
+                statusEl.textContent = "Decifratura Backup A...";
+                try {
+                    vaultA = await decryptVaultBlob(pwdA, fileAData, skA);
+                } catch (e) {
+                    if (e.message === 'SECRET_KEY_REQUIRED') {
+                        throw new Error("Il Backup A richiede la Secret Key (2SKD). Inseriscila nel campo apposito.");
+                    }
+                    throw new Error("Impossibile decifrare il Backup A: password o Secret Key errata.");
+                }
+
+                // Decrypt Vault B
+                statusEl.textContent = "Decifratura Backup B...";
+                try {
+                    vaultB = await decryptVaultBlob(pwdB, fileBData, skB);
+                } catch (e) {
+                    if (e.message === 'SECRET_KEY_REQUIRED') {
+                        throw new Error("Il Backup B richiede la Secret Key (2SKD). Inseriscila nel campo apposito.");
+                    }
+                    throw new Error("Impossibile decifrare il Backup B: password o Secret Key errata.");
+                }
+
+                statusEl.textContent = "Confronto delle voci in corso...";
+                runDiffAnalysis(vaultA, vaultB);
+
+                statusEl.textContent = "Confronto completato con successo!";
+                setTimeout(() => statusEl.classList.add('hidden'), 2000);
+            } catch (err) {
+                console.error(err);
+                alert("Errore: " + err.message);
+                statusEl.classList.add('hidden');
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        // ----------------------------------------------------
+        // Diff Engine
+        // ----------------------------------------------------
+        function normalizeItems(items) {
+            if (!items) return [];
+            if (Array.isArray(items)) return items;
+            return Object.values(items);
+        }
+
+        function runDiffAnalysis(vA, vB) {
+            const listA = normalizeItems(vA.items);
+            const listB = normalizeItems(vB.items);
+
+            // Metadata dates
+            const dateA = vA.lastUpdated ? new Date(vA.lastUpdated) : null;
+            const dateB = vB.lastUpdated ? new Date(vB.lastUpdated) : null;
+
+            document.getElementById('meta-date-a').textContent = dateA ? dateA.toLocaleString('it-IT') : 'Non indicata';
+            document.getElementById('meta-date-b').textContent = dateB ? dateB.toLocaleString('it-IT') : 'Non indicata';
+
+            if (dateA && dateB) {
+                if (dateB.getTime() > dateA.getTime()) {
+                    document.getElementById('meta-date-diff').textContent = "✓ Il Backup B è più recente di A";
+                    document.getElementById('meta-date-diff').className = "text-success font-bold";
+                } else if (dateA.getTime() > dateB.getTime()) {
+                    document.getElementById('meta-date-diff').textContent = "⚠️ Il Backup A è più recente di B";
+                    document.getElementById('meta-date-diff').className = "text-warning font-bold";
+                } else {
+                    document.getElementById('meta-date-diff').textContent = "I due backup hanno la stessa data";
+                    document.getElementById('meta-date-diff').className = "text-muted font-bold";
+                }
+            } else {
+                document.getElementById('meta-date-diff').textContent = "-";
+            }
+
+            // Categories diff
+            const catA = new Set(vA.categories || []);
+            const catB = new Set(vB.categories || []);
+            const addedCat = [...catB].filter(c => !catA.has(c));
+            const removedCat = [...catA].filter(c => !catB.has(c));
+            const catBox = document.getElementById('categories-diff-box');
+            if (addedCat.length > 0 || removedCat.length > 0) {
+                catBox.classList.remove('hidden');
+                let catHtml = `<strong>Differenze Categorie:</strong><br>`;
+                if (addedCat.length > 0) catHtml += `<span class="text-success">+ Aggiunte in B: ${addedCat.join(', ')}</span><br>`;
+                if (removedCat.length > 0) catHtml += `<span class="text-danger">- Eliminate in B: ${removedCat.join(', ')}</span>`;
+                catBox.innerHTML = catHtml;
+            } else {
+                catBox.classList.add('hidden');
+            }
+
+            // Map items by ID
+            const mapAById = new Map();
+            const mapAByNameUser = new Map();
+            listA.forEach(item => {
+                if (item.id) mapAById.set(item.id, item);
+                const key = `${(item.name || '').trim().toLowerCase()}|||${(item.username || '').trim().toLowerCase()}`;
+                mapAByNameUser.set(key, item);
+            });
+
+            const processedAIds = new Set();
+            comparisonResults = [];
+
+            // Process all items in B
+            listB.forEach(itemB => {
+                let matchA = null;
+                if (itemB.id && mapAById.has(itemB.id)) {
+                    matchA = mapAById.get(itemB.id);
+                } else {
+                    const key = `${(itemB.name || '').trim().toLowerCase()}|||${(itemB.username || '').trim().toLowerCase()}`;
+                    if (mapAByNameUser.has(key)) {
+                        matchA = mapAByNameUser.get(key);
+                    }
+                }
+
+                if (matchA) {
+                    processedAIds.add(matchA.id);
+                    // Compare fields
+                    const diffs = getFieldDiffs(matchA, itemB);
+                    if (diffs.length === 0) {
+                        comparisonResults.push({
+                            status: 'identical',
+                            itemA: matchA,
+                            itemB: itemB,
+                            diffs: []
+                        });
+                    } else {
+                        comparisonResults.push({
+                            status: 'modified',
+                            itemA: matchA,
+                            itemB: itemB,
+                            diffs: diffs
+                        });
+                    }
+                } else {
+                    // Item in B doesn't exist in A
+                    comparisonResults.push({
+                        status: 'added',
+                        itemA: null,
+                        itemB: itemB,
+                        diffs: []
+                    });
+                }
+            });
+
+            // Any remaining items in A were removed in B
+            listA.forEach(itemA => {
+                if (!processedAIds.has(itemA.id)) {
+                    comparisonResults.push({
+                        status: 'removed',
+                        itemA: itemA,
+                        itemB: null,
+                        diffs: []
+                    });
+                }
+            });
+
+            // Sort comparisonResults: modified first, then added, then removed, then identical; alphabetically by name
+            const order = { 'modified': 1, 'added': 2, 'removed': 3, 'identical': 4 };
+            comparisonResults.sort((x, y) => {
+                if (order[x.status] !== order[y.status]) {
+                    return order[x.status] - order[y.status];
+                }
+                const nameX = (x.itemB || x.itemA)?.name || '';
+                const nameY = (y.itemB || y.itemA)?.name || '';
+                return nameX.localeCompare(nameY);
+            });
+
+            // Update stats
+            const countAdded = comparisonResults.filter(r => r.status === 'added').length;
+            const countMod = comparisonResults.filter(r => r.status === 'modified').length;
+            const countDel = comparisonResults.filter(r => r.status === 'removed').length;
+            const countSame = comparisonResults.filter(r => r.status === 'identical').length;
+            const countDiffs = countAdded + countMod + countDel;
+
+            document.getElementById('stat-added').textContent = countAdded;
+            document.getElementById('stat-mod').textContent = countMod;
+            document.getElementById('stat-del').textContent = countDel;
+            document.getElementById('stat-same').textContent = countSame;
+
+            document.getElementById('cnt-diffs').textContent = countDiffs;
+            document.getElementById('cnt-mod').textContent = countMod;
+            document.getElementById('cnt-added').textContent = countAdded;
+            document.getElementById('cnt-del').textContent = countDel;
+            document.getElementById('cnt-same').textContent = countSame;
+            document.getElementById('cnt-all').textContent = comparisonResults.length;
+
+            document.getElementById('results-section').classList.remove('hidden');
+            renderDiffList();
+        }
+
+        function getFieldDiffs(a, b) {
+            const fields = [
+                { key: 'name', label: 'Nome' },
+                { key: 'username', label: 'Nome Utente' },
+                { key: 'password', label: 'Password' },
+                { key: 'url', label: 'Sito Web' },
+                { key: 'category', label: 'Categoria' },
+                { key: 'notes', label: 'Note' },
+                { key: 'favorite', label: 'Preferito' }
+            ];
+
+            const diffs = [];
+            fields.forEach(f => {
+                const valA = a[f.key] !== undefined && a[f.key] !== null ? String(a[f.key]) : '';
+                const valB = b[f.key] !== undefined && b[f.key] !== null ? String(b[f.key]) : '';
+                if (valA !== valB) {
+                    diffs.push({
+                        field: f.key,
+                        label: f.label,
+                        oldVal: valA,
+                        newVal: valB
+                    });
+                }
+            });
+            return diffs;
+        }
+
+        // ----------------------------------------------------
+        // Rendering Diff Cards
+        // ----------------------------------------------------
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function renderDiffList() {
+            const container = document.getElementById('diff-list');
+            const query = (document.getElementById('diff-search').value || '').trim().toLowerCase();
+            container.innerHTML = '';
+
+            let filtered = comparisonResults;
+
+            // Apply category/type filter
+            if (currentFilter === 'diffs') {
+                filtered = filtered.filter(r => r.status !== 'identical');
+            } else if (currentFilter === 'mod') {
+                filtered = filtered.filter(r => r.status === 'modified');
+            } else if (currentFilter === 'added') {
+                filtered = filtered.filter(r => r.status === 'added');
+            } else if (currentFilter === 'removed') {
+                filtered = filtered.filter(r => r.status === 'removed');
+            } else if (currentFilter === 'same') {
+                filtered = filtered.filter(r => r.status === 'identical');
+            }
+
+            // Apply search query
+            if (query) {
+                filtered = filtered.filter(r => {
+                    const item = r.itemB || r.itemA;
+                    return (item.name && item.name.toLowerCase().includes(query)) ||
+                           (item.username && item.username.toLowerCase().includes(query)) ||
+                           (item.url && item.url.toLowerCase().includes(query)) ||
+                           (item.notes && item.notes.toLowerCase().includes(query));
+                });
+            }
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-muted p-4" style="background:var(--surface); border-radius:var(--radius-md); border:1px solid var(--border);">
+                        Nessuna voce corrisponde ai filtri selezionati.
+                    </div>
+                `;
+                return;
+            }
+
+            filtered.forEach((res, idx) => {
+                const card = document.createElement('div');
+                card.className = `diff-card diff-${res.status}`;
+                const item = res.itemB || res.itemA;
+
+                let tagLabel = '';
+                let tagClass = '';
+                if (res.status === 'added') {
+                    tagLabel = '+ Aggiunto in B';
+                    tagClass = 'tag-added';
+                } else if (res.status === 'removed') {
+                    tagLabel = '- Rimosso in B (presente solo in A)';
+                    tagClass = 'tag-removed';
+                } else if (res.status === 'modified') {
+                    tagLabel = `✏️ Modificato (${res.diffs.length} campi)`;
+                    tagClass = 'tag-modified';
+                } else {
+                    tagLabel = '⚪ Identico';
+                    tagClass = 'tag-identical';
+                }
+
+                let bodyHtml = '';
+
+                if (res.status === 'modified') {
+                    bodyHtml = `
+                        <table class="diff-table">
+                            <thead>
+                                <tr>
+                                    <th>Campo</th>
+                                    <th>Backup A (Precedente)</th>
+                                    <th>Backup B (Nuovo)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${res.diffs.map(d => {
+                                    if (d.field === 'password') {
+                                        return `
+                                            <tr>
+                                                <td><strong>${escapeHtml(d.label)}</strong></td>
+                                                <td>
+                                                    <span class="diff-val-old">
+                                                        <span class="masked-pwd" id="pwd-old-${idx}">••••••••</span>
+                                                        <span class="raw-pwd hidden" id="pwd-old-raw-${idx}">${escapeHtml(d.oldVal)}</span>
+                                                        <button class="btn-mini" onclick="togglePasswordView('pwd-old-${idx}', 'pwd-old-raw-${idx}')">👁️</button>
+                                                        <button class="btn-mini" onclick="copyText('${escapeHtml(d.oldVal)}')">📋</button>
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <span class="diff-val-new">
+                                                        <span class="masked-pwd" id="pwd-new-${idx}">••••••••</span>
+                                                        <span class="raw-pwd hidden" id="pwd-new-raw-${idx}">${escapeHtml(d.newVal)}</span>
+                                                        <button class="btn-mini" onclick="togglePasswordView('pwd-new-${idx}', 'pwd-new-raw-${idx}')">👁️</button>
+                                                        <button class="btn-mini" onclick="copyText('${escapeHtml(d.newVal)}')">📋</button>
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        `;
+                                    } else if (d.field === 'notes') {
+                                        return `
+                                            <tr>
+                                                <td><strong>${escapeHtml(d.label)}</strong></td>
+                                                <td><div class="diff-val-old notes-box">${escapeHtml(d.oldVal) || '<em>(vuoto)</em>'}</div></td>
+                                                <td><div class="diff-val-new notes-box">${escapeHtml(d.newVal) || '<em>(vuoto)</em>'}</div></td>
+                                            </tr>
+                                        `;
+                                    } else {
+                                        return `
+                                            <tr>
+                                                <td><strong>${escapeHtml(d.label)}</strong></td>
+                                                <td><span class="diff-val-old">${escapeHtml(d.oldVal) || '<em>(vuoto)</em>'}</span></td>
+                                                <td><span class="diff-val-new">${escapeHtml(d.newVal) || '<em>(vuoto)</em>'}</span></td>
+                                            </tr>
+                                        `;
+                                    }
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                } else if (res.status === 'added' || res.status === 'removed') {
+                    const isAdd = res.status === 'added';
+                    bodyHtml = `
+                        <div class="text-sm mt-2" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:0.5rem;">
+                            <div><strong>Username:</strong> ${escapeHtml(item.username) || '-'}</div>
+                            <div>
+                                <strong>Password:</strong> 
+                                <span class="masked-pwd" id="pwd-single-${idx}">••••••••</span>
+                                <span class="raw-pwd hidden" id="pwd-single-raw-${idx}">${escapeHtml(item.password)}</span>
+                                <button class="btn-mini" onclick="togglePasswordView('pwd-single-${idx}', 'pwd-single-raw-${idx}')">👁️</button>
+                                <button class="btn-mini" onclick="copyText('${escapeHtml(item.password)}')">📋</button>
+                            </div>
+                            <div><strong>Categoria:</strong> ${escapeHtml(item.category) || '-'}</div>
+                            <div><strong>Sito:</strong> ${escapeHtml(item.url) || '-'}</div>
+                        </div>
+                        ${item.notes ? `<div class="text-xs text-muted mt-2 notes-box" style="background:#f1f5f9;"><strong>Note:</strong><br>${escapeHtml(item.notes)}</div>` : ''}
+                    `;
+                } else {
+                    bodyHtml = `
+                        <div class="text-xs text-muted">
+                            Username: <strong>${escapeHtml(item.username) || '-'}</strong> | Categoria: <strong>${escapeHtml(item.category) || '-'}</strong> | Nessuna modifica riscontrata
+                        </div>
+                    `;
+                }
+
+                card.innerHTML = `
+                    <div class="diff-card-header">
+                        <div class="diff-item-title">
+                            ${escapeHtml(item.name || 'Senza Nome')}
+                            ${item.url ? `<span class="text-xs text-muted" style="font-weight:normal;">(${escapeHtml(item.url)})</span>` : ''}
+                        </div>
+                        <span class="diff-tag ${tagClass}">${tagLabel}</span>
+                    </div>
+                    ${bodyHtml}
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        window.togglePasswordView = function(maskedId, rawId) {
+            const masked = document.getElementById(maskedId);
+            const raw = document.getElementById(rawId);
+            if (masked && raw) {
+                masked.classList.toggle('hidden');
+                raw.classList.toggle('hidden');
+            }
+        };
+
+        window.copyText = function(text) {
+            if (!text) return;
+            navigator.clipboard.writeText(text).then(() => {
+                showToast("Copiato negli appunti!");
+            });
+        };
+
+        // Filter button events
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentFilter = btn.getAttribute('data-filter');
+                renderDiffList();
+            });
+        });
+
+        document.getElementById('diff-search').addEventListener('input', renderDiffList);
+
+        // Export Report
+        document.getElementById('btn-export-report').addEventListener('click', () => {
+            if (!comparisonResults || comparisonResults.length === 0) return;
+
+            let report = `====================================================\n`;
+            report += `REPORT DI CONFRONTO BACKUP VAULT — DipaVaultGuard\n`;
+            report += `Data Generazione: ${new Date().toLocaleString('it-IT')}\n`;
+            report += `Backup A: ${fileAName}\n`;
+            report += `Backup B: ${fileBName}\n`;
+            report += `====================================================\n\n`;
+
+            const added = comparisonResults.filter(r => r.status === 'added');
+            const mod = comparisonResults.filter(r => r.status === 'modified');
+            const del = comparisonResults.filter(r => r.status === 'removed');
+            const same = comparisonResults.filter(r => r.status === 'identical');
+
+            report += `RIEPILOGO:\n`;
+            report += `- Aggiunti in B:   ${added.length}\n`;
+            report += `- Modificati:      ${mod.length}\n`;
+            report += `- Rimossi in B:    ${del.length}\n`;
+            report += `- Invariati:       ${same.length}\n`;
+            report += `- Totale analizzati: ${comparisonResults.length}\n\n`;
+
+            if (mod.length > 0) {
+                report += `----------------------------------------------------\n`;
+                report += `VOCI MODIFICATE (${mod.length})\n`;
+                report += `----------------------------------------------------\n`;
+                mod.forEach(m => {
+                    report += `• [${m.itemB.name}] (Username: ${m.itemB.username || '-'})\n`;
+                    m.diffs.forEach(d => {
+                        report += `   - ${d.label}: da "${d.oldVal}" a "${d.newVal}"\n`;
+                    });
+                    report += `\n`;
+                });
+            }
+
+            if (added.length > 0) {
+                report += `----------------------------------------------------\n`;
+                report += `VOCI AGGIUNTE IN B (${added.length})\n`;
+                report += `----------------------------------------------------\n`;
+                added.forEach(a => {
+                    report += `• [${a.itemB.name}] Username: "${a.itemB.username || '-'}", Categoria: "${a.itemB.category || '-'}"\n`;
+                });
+                report += `\n`;
+            }
+
+            if (del.length > 0) {
+                report += `----------------------------------------------------\n`;
+                report += `VOCI RIMOSSE IN B (${del.length})\n`;
+                report += `----------------------------------------------------\n`;
+                del.forEach(d => {
+                    report += `• [${d.itemA.name}] Username: "${d.itemA.username || '-'}", Categoria: "${d.itemA.category || '-'}"\n`;
+                });
+                report += `\n`;
+            }
+
+            const blob = new Blob([report], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `report_confronto_${new Date().toISOString().split('T')[0]}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast("Report testuale scaricato!");
+        });
+    </script>
+</body>
+</html>

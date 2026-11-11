@@ -1233,6 +1233,25 @@ function setupEventListeners() {
     });
   }
 
+  // Header cloud icon button click
+  const btnHeaderSync = document.getElementById('btn-sync');
+  if (btnHeaderSync) {
+    btnHeaderSync.addEventListener('click', async () => {
+      if (!driveClient || !driveClient.isAuthenticated()) {
+        UI.showToast("Google Drive non connesso. Apri le Impostazioni per connetterti.", "warning");
+        UI.openSettings();
+        return;
+      }
+      UI.showToast("Sincronizzazione in corso...", "info");
+      try {
+        await syncFromDrive();
+      } catch (err) {
+        console.error(err);
+        UI.showToast("Errore durante la sincronizzazione", "error");
+      }
+    });
+  }
+
   // Lock button
   const btnLock = document.getElementById('btn-lock');
   if (btnLock) {
