@@ -619,6 +619,7 @@ async function saveAndSync() {
       } catch (e) {
         console.error("Drive sync error:", e);
         UI.updateSyncStatus('error');
+    UI.showToast("Sincronizzazione non riuscita: " + (err.message || "verifica connessione"), "error", 6000);
       }
     }
   } catch (err) {
@@ -655,7 +656,7 @@ async function tryAutoSyncDrive(skipIfJustPersisted = false) {
     return; // Don't even try to authenticate!
   }
 
-  if (driveClient.isAuthenticated()) {
+  if (driveClient.hasActiveToken()) {
     syncFromDrive();
   } else {
     try {
@@ -1181,7 +1182,7 @@ function setupEventListeners() {
   if (btnSettingsDriveToggle) {
     btnSettingsDriveToggle.addEventListener('click', async () => {
       if (!driveClient) return;
-      if (driveClient.isAuthenticated()) {
+      if (driveClient.hasActiveToken()) {
         driveClient.signOut();
         UI.showToast("Disconnesso da Drive", "info");
         btnSettingsDriveToggle.textContent = 'Connetti';
@@ -1833,12 +1834,12 @@ async function syncFromDrive(forceUnlockPrompt = false) {
                await saveAndSync(); 
                UI.renderItemList(appVault.getAllItems());
                UI.renderCategories(appVault.getCategories(), null);
-               UI.showToast("Vault unito e sincronizzato con successo", "success");
+               UI.showToast("Sincronizzazione completata: vault unito con successo!", "success");
              } else if (localIsNewer) {
                await saveAndSync();
-               UI.showToast("Dati locali caricati su Drive", "success");
+               UI.showToast("Sincronizzazione completata: dati locali caricati su Drive!", "success");
              } else {
-               UI.showToast("Il Vault  gi perfettamente allineato", "info");
+               UI.showToast("Il Vault  gi perfettamente allineato!", "success");
              }
           }
         } catch (e) {
@@ -1854,6 +1855,7 @@ async function syncFromDrive(forceUnlockPrompt = false) {
   } catch (err) {
     console.error("Sync error:", err);
     UI.updateSyncStatus('error');
+    UI.showToast("Sincronizzazione non riuscita: " + (err.message || "verifica connessione"), "error", 6000);
   }
 }
 function persistLocalVaultBlob(newBlobBytes) {

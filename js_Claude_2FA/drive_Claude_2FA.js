@@ -107,17 +107,33 @@ export class GoogleDriveClient {
     localStorage.removeItem('dipavaultguard-drive-connected');
   }
 
+  hasActiveToken() {
+    return !!this.accessToken;
+  }
+
+  isConnected() {
+    return !!this.accessToken || localStorage.getItem('dipavaultguard-drive-connected') === 'true';
+  }
+
   isAuthenticated() {
-    // Controlla la memoria prima, poi il flag persistente in localStorage come
-    // fallback per i casi in cui il token è in memoria ma le impostazioni vengono
-    // riaperte dopo un silentRefresh (in cui l'accessToken è già valido ma il
-    // controllo avviene prima del refresh).
-    if (this.accessToken) return true;
-    return localStorage.getItem('dipavaultguard-drive-connected') === 'true';
+    return this.isConnected();
+  }
+
+  async ensureValidToken() {
+    if (this.accessToken) return this.accessToken;
+    if (this.isConnected()) {
+      try {
+        await this.silentRefresh();
+        if (this.accessToken) return this.accessToken;
+      } catch (e) {
+        console.warn("silentRefresh fallito:", e);
+      }
+    }
+    throw new Error("Accesso a Google Drive non attivo. Clicca sulla nuvoletta in alto o su Connetti nelle Impostazioni.");
   }
 
   async getUserInfo() {
-    if (!this.accessToken) throw new Error("Non autenticato");
+    await this.ensureValidToken();
     const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
       headers: { Authorization: `Bearer ${this.accessToken}` }
     });
@@ -130,7 +146,7 @@ export class GoogleDriveClient {
   }
 
   async findVaultFile(fileName = 'dipavault.bin') {
-    if (!this.accessToken) throw new Error("Non autenticato");
+    await this.ensureValidToken();
     
     // Cerca il file con il nome specificato o con i nomi alternativi usati dalle varie versioni
     const query = encodeURIComponent(`(name='${fileName}' or name='dipavaultguard.enc' or name='dipavault.enc') and 'appDataFolder' in parents and trashed=false`);
@@ -148,7 +164,7 @@ export class GoogleDriveClient {
   }
 
   async createVaultFile(data, fileName = 'dipavault.bin') {
-    if (!this.accessToken) throw new Error("Non autenticato");
+    await this.ensureValidToken();
     
     const metadata = {
       name: fileName,
@@ -171,7 +187,7 @@ export class GoogleDriveClient {
   }
 
   async readVaultFile(fileId) {
-    if (!this.accessToken) throw new Error("Non autenticato");
+    await this.ensureValidToken();
     
     const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
       headers: { Authorization: `Bearer ${this.accessToken}` }
@@ -185,7 +201,7 @@ export class GoogleDriveClient {
   }
 
   async updateVaultFile(fileId, data) {
-    if (!this.accessToken) throw new Error("Non autenticato");
+    await this.ensureValidToken();
     
     const response = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&fields=id,name,modifiedTime`, {
       method: 'PATCH',
@@ -215,7 +231,7 @@ export class GoogleDriveClient {
   // pensati per essere lato client nel modello di EmailJS (non sono segreti come una password),
   // ma chiunque avesse accesso al tuo Google Drive potrebbe comunque vederli.
   async findOtpConfigFile(fileName = 'dipavault-otp-config.json') {
-    if (!this.accessToken) throw new Error("Non autenticato");
+    await this.ensureValidToken();
 
     const query = encodeURIComponent(`name='${fileName}' and 'appDataFolder' in parents and trashed=false`);
     const response = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&spaces=appDataFolder&fields=files(id,name,modifiedTime)`, {
@@ -232,7 +248,7 @@ export class GoogleDriveClient {
   }
 
   async readOtpConfigFile(fileId) {
-    if (!this.accessToken) throw new Error("Non autenticato");
+    await this.ensureValidToken();
 
     const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
       headers: { Authorization: `Bearer ${this.accessToken}` }
@@ -245,7 +261,7 @@ export class GoogleDriveClient {
 
   // Crea o aggiorna il file, a seconda che esista già o meno.
   async saveOtpConfigFile(config, fileName = 'dipavault-otp-config.json') {
-    if (!this.accessToken) throw new Error("Non autenticato");
+    await this.ensureValidToken();
 
     const existing = await this.findOtpConfigFile(fileName);
     const body = JSON.stringify(config);
